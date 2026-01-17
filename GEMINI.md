@@ -18,14 +18,14 @@
 
 Dependencies:
 * CMake
-* Eigen3
-* miniz
-* zlib
-* tinygltf
-* nlohmann/json
-* glog
-* gflags
-* googletest
+* Eigen3 (find_package)
+* miniz (find_package)
+* zlib (find_package)
+* tinygltf (find_package)
+* nlohmann/json (find_package)
+* glog (find_package)
+* gflags (find_package)
+* googletest (find_package)
 
 Coding Style: google c++ style guide
 Building and testing:
@@ -106,13 +106,16 @@ The application will follow a strict unidirectional data flow composed of three 
 
 ## Phase 1: The Skeleton
 
-1. **Setup:** Initialize a CMake project with `miniz.c` and `tinygltf.h`.
-2. **PK3 Reader:** Implement a class to open a `.pk3` and read a file into a memory buffer by name (e.g., `maps/q3dm6.bsp`).
-3. **Header Check:** Verify `IBSP` magic number and `0x2E` version.
+1. **Setup:** Initialize a CMake project with the stated dependencies.
+2. **PK3 Virtual Filesystem Reconstruction:** 
+ - Implement a function to list all the pk3 files in the base path in alphabetical order.
+  - Write a function to unzip all pk3 files into a temporary directory. When colliding file names, do not overwrite. Skip the file. Return the set of files.
+3. **Header Check:** Write a function to verify `IBSP` magic number and `0x2E` version of the specified BSP file (e.g., `maps/q3dm1.bsp`).
+4. **BSP File Reader:** Write a function that reads a BSP file into a memory buffer by name (e.g., `maps/q3dm1.bsp`). The function should return the list of lump buffers as string_views.
 
 ## Phase 2: Geometry Extraction
 
-1. **Lump Parsing:** Define C structs for `dface_t`, `dvertex_t`, etc., exactly matching the Q3 specs.
+1. **Lump Parsing:** Define C++ structs for faces and vertices, etc., exactly matching the Q3 specs.
 2. **Triangulation:** Write a loop that iterates through all `Faces`.
 * If `type == 1` (Polygon) or `type == 3` (Mesh): Read `n_meshverts` from the `MeshVerts` lump starting at `meshvert` offset.
 * Store these as a `RenderBatch`.
