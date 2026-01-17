@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "bsp_geometry.h"
+
 namespace ioq3_map {
 
 // --- Texture ---
@@ -64,6 +66,7 @@ struct Sky {
   // For Texture type (HDRi)
   Texture texture;
   float intensity_multiplier = 1.0f;
+  // TODO: Add sun_mangle/orientation to Sky?
 };
 
 // --- Scene ---
@@ -73,6 +76,10 @@ struct Scene {
   std::vector<Light> lights;
   std::optional<Sky> sky;
 };
+
+Scene AssembleBSPObjects(
+    const BSP& bsp,
+    const std::unordered_map<BSPSurfaceIndex, BSPGeometry>& bsp_geometries);
 
 }  // namespace ioq3_map
 

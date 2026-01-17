@@ -49,6 +49,8 @@ add_library(tinygltf INTERFACE)
 add_library(ioq3_map SHARED
     src/archives.cpp
     src/bsp.cpp
+    src/bsp_geometry.cpp
+    src/scene.cpp
 )
 
 target_link_libraries(ioq3_map PUBLIC
@@ -75,6 +77,8 @@ enable_testing()
 add_executable(ioq3_map_exporter_test
     src/archives_test.cpp
     src/bsp_test.cpp
+    src/bsp_geometry_test.cpp
+    src/scene_test.cpp
 )
 target_link_libraries(ioq3_map_exporter_test PRIVATE
     ioq3_map

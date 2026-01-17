@@ -14,7 +14,7 @@
 
 * `scene.gltf`: The geometry and scene hierarchy.
 * `*.tga/*.jpg/*.png`: The texture copies.
-* `manifest.json`: A mapping of Q3 Face Indices to glTF Primitive Indices.
+* `manifest.json`: A mapping of Q3 Surface Indices to glTF Primitive Indices.
 
 Dependencies:
 * CMake
@@ -141,8 +141,8 @@ Read the specs in `docs/Unofficial Quake 3 Map Specs.html` carefully.
 2. **JSON Output:**
 ```json
 {
-  "face_mapping": [
-    { "bsp_face_index": 0, "gltf_primitive_index": 0, "material": "textures/base_wall/concrete" },
+  "surface_mapping": [
+    { "bsp_surface_index": 0, "gltf_primitive_index": 0, "material": "textures/base_wall/concrete" },
     ...
   ]
 }
