@@ -39,3 +39,12 @@
 
 # debug information files
 *.dwo
+
+# Build
+build/
+
+# CMake
+.cache/
+
+# Virtual Filesystem
+vfs_mount_point/

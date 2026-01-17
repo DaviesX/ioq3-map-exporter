@@ -113,6 +113,8 @@ The application will follow a strict unidirectional data flow composed of three 
 3. **Header Check:** Write a function to verify `IBSP` magic number and `0x2E` version of the specified BSP file (e.g., `maps/q3dm1.bsp`).
 4. **BSP File Reader:** Write a function that reads a BSP file into a memory buffer by name (e.g., `maps/q3dm1.bsp`). The function should return the list of lump buffers as string_views.
 
+Make sure all functions are unit tested.
+
 ## Phase 2: Geometry Extraction
 
 1. **Lump Parsing:** Define C++ structs for faces and vertices, etc., exactly matching the Q3 specs.
