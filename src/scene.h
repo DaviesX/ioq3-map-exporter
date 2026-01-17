@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "bsp_geometry.h"
@@ -28,7 +29,7 @@ struct Material {
   float emission_intensity = 0.0f;
 };
 
-// --- Geometry ---
+// --- Geometry/Triangle Mesh ---
 struct Geometry {
   std::vector<Eigen::Vector3f> vertices;
   std::vector<Eigen::Vector3f> normals;
@@ -37,7 +38,7 @@ struct Geometry {
 
   std::vector<uint32_t> indices;
 
-  int material_id = -1;  // Index into Scene::materials
+  BSPTextureIndex material_id = -1;
   Eigen::Affine3f transform = Eigen::Affine3f::Identity();
 };
 
@@ -56,23 +57,20 @@ struct Light {
 
   // Area Light Parameters
   float area = 0.0f;
-  const Material* material = nullptr;
-  const Geometry* geometry = nullptr;
-  int geometry_index = -1;  // For internal use: index into Scene::geometries.
+  BSPTextureIndex material_id = -1;
+  BSPSurfaceIndex geometry_index = -1;
 };
 
 // --- Sky ---
 struct Sky {
-  // For Texture type (HDRi)
   Texture texture;
   float intensity_multiplier = 1.0f;
-  // TODO: Add sun_mangle/orientation to Sky?
 };
 
 // --- Scene ---
 struct Scene {
-  std::vector<Geometry> geometries;
-  std::vector<Material> materials;
+  std::unordered_map<BSPSurfaceIndex, Geometry> geometries;
+  std::unordered_map<BSPTextureIndex, Material> materials;
   std::vector<Light> lights;
   std::optional<Sky> sky;
 };

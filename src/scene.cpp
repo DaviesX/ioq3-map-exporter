@@ -55,42 +55,14 @@ Scene AssembleBSPObjects(
     const std::unordered_map<BSPSurfaceIndex, BSPGeometry>& bsp_geometries) {
   Scene scene;
 
-  // Load Shaders/Textures to create Materials
-  size_t num_shaders = 0;
-  const dshader_t* shaders =
-      GetLumpData<dshader_t>(bsp, LumpType::Textures, num_shaders);
-
-  // Map BSP Texture Index -> Scene Material Index
-  std::unordered_map<int, int> texture_to_material_id;
-
   for (const auto& [surface_idx, geo] : bsp_geometries) {
     if (std::holds_alternative<BSPPatch>(geo.primitive)) {
       // TODO: Handle Patches (Tessellation)
       continue;
     }
 
-    // Resolve Material
-    int material_id = -1;
-    if (texture_to_material_id.find(geo.texture_index) !=
-        texture_to_material_id.end()) {
-      material_id = texture_to_material_id[geo.texture_index];
-    } else {
-      material_id = scene.materials.size();
-      Material mat;
-      if (shaders && geo.texture_index >= 0 &&
-          geo.texture_index < static_cast<int>(num_shaders)) {
-        mat.name = shaders[geo.texture_index].shader;
-        // Basic Albedo path (remove extension logic handled later?)
-        mat.albedo.file_path = mat.name;
-      } else {
-        mat.name = "default_" + std::to_string(geo.texture_index);
-      }
-      scene.materials.push_back(std::move(mat));
-      texture_to_material_id[geo.texture_index] = material_id;
-    }
-
     Geometry out_geo;
-    out_geo.material_id = material_id;
+    out_geo.material_id = geo.texture_index;
     out_geo.transform = Eigen::Affine3f::Identity();
 
     // Helper lambda to convert vertices and indices
@@ -121,7 +93,7 @@ Scene AssembleBSPObjects(
       convert_mesh_data(mesh.vertices, mesh.indices);
     }
 
-    scene.geometries.push_back(std::move(out_geo));
+    scene.geometries.emplace(surface_idx, std::move(out_geo));
   }
 
   return scene;
