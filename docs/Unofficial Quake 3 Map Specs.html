@@ -1,0 +1,909 @@
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=windows-1252">
+<title>
+Unofficial Quake 3 Map Specs
+</title>
+</head>
+<body vlink="#001e73" link="#001e73" bgcolor="#ffffff" text="#000000">
+
+
+
+<b><font size="6">
+Unofficial Quake 3 Map Specs
+</font></b>
+
+<br>
+<br>
+<br>
+<br>
+
+<!---------------------------------------------------------------------------->
+<a name="Intro">
+<p>
+<table border="1" cellpadding="0" cellspacing="0" width="100%" bgcolor="#ffffd0">
+<tbody><tr><td width="100%">
+<table border="0" cellpadding="0" cellspacing="0" width="100%">
+<tbody><tr><td>
+<b><font size="4">Introduction</font></b>
+</td>
+<td align="right">
+<a href="https://www.mralligator.com/q3/">[top]</a>
+</td>
+</tr></tbody></table>
+</td></tr></tbody></table>
+
+</p></a><p><a name="Intro">
+This document describes the Quake 3 BSP file format.  This is an unofficial
+document.  Quake 3 is a registered trademark of </a><a href="http://www.idsoftware.com/">id Software</a>, which does not sponsor,
+authorize, or endorse this document.
+
+</p><p>
+This document describes the Quake 3 BSP file format as the author
+understands it.  While every effort has been made to ensure that the
+contents of this document are accurate, the author does not guarantee that
+any portion of this document is actually correct.  In addition, the author
+cannot be held responsible the consequences of the any use or misuse of the
+information contained in this document.
+
+</p><p>
+<font size="2">
+Copyright © 2000 <a href="http://graphics.stanford.edu/~kekoa/">Kekoa Proudfoot</a>.  All rights
+reserved.
+</font>
+
+<!---------------------------------------------------------------------------->
+<a name="Description">
+</a></p><p><a name="Description">
+<table border="1" cellpadding="0" cellspacing="0" width="100%" bgcolor="#ffffd0">
+<tbody><tr><td width="100%">
+<table border="0" cellpadding="0" cellspacing="0" width="100%">
+<tbody><tr><td>
+<b><font size="4">Description</font></b>
+</td>
+<td align="right">
+<a href="https://www.mralligator.com/q3/">[top]</a>
+</td>
+</tr></tbody></table>
+</td></tr></tbody></table>
+
+</a></p><p><a name="Description">
+<b><font size="4">
+File structure
+</font></b>
+
+</a></p><p><a name="Description">
+Quake 3 BSP files are IBSP files, and therefore have a structure similar to
+previous BSP files from id Software.  Every IBSP file begins with a header,
+which in turn contains a lump directory.  The lump directory describes the
+layout of the rest of the file, which contains some number of lumps.  Each
+lump stores a particular kind of map data.
+
+</a></p><p><a name="Description">
+</a></p><center><a name="Description">
+<table border="0" cellpadding="0" cellspacing="5" width="65%">
+<tbody><tr><td align="center">
+<table border="0" cellpadding="0" cellspacing="0" bgcolor="#000000">
+<tbody><tr><td>
+<table border="0" cellpadding="5" cellspacing="1" width="100%">
+<tbody><tr bgcolor="#ffffff"><td align="center"><b>Header / Directory</b></td>
+</tr><tr bgcolor="#ffffff"><td align="center"><b>Lump</b></td>
+</tr><tr bgcolor="#ffffff"><td align="center"><b>Lump</b></td>
+</tr><tr bgcolor="#ffffff"><td align="center"><b>Lump</b></td>
+</tr><tr bgcolor="#ffffff"><td align="center"><b>...</b></td>
+</tr></tbody></table>
+</td>
+</tr></tbody></table>
+</td></tr><tr><td align="center">
+
+<em><b><!--Figure 1: -->The layout of an IBSP file.</b> An IBSP file
+consists of a header followed by a number of lumps.  The header contains a
+directory which identifies the locations and sizes of the lumps.</em>
+
+</td>
+</tr></tbody></table>
+</a></center><a name="Description">
+
+<p>
+<b><font size="4">
+Data types
+</font></b>
+
+</p><p>
+Quake 3 BSP files contains only four basic data types.  They are:
+
+</p><p>
+<table border="0" cellspacing="0" cellpadding="0" width="75%">
+<tbody><tr><th align="left">Type
+</th><th align="left">Description
+</th></tr><tr></tr><tr>
+<td valign="top">ubyte</td><td>unsigned byte</td></tr><tr>
+<td valign="top">int</td><td>4-byte integer, little-endian</td></tr><tr>
+<td valign="top">float</td><td>4-byte IEEE float, little-endian</td></tr><tr>
+<td valign="top">string[<em>n</em>]</td><td>string of <em>n</em> ASCII bytes, not necessarily null-terminated</td></tr><tr>
+</tr></tbody></table>
+
+</p></a><p><a name="Description">
+All data in a BSP file is organized into records composed of these four data
+types.
+
+</a><a name="Header">
+</a><a name="Directory">
+</a></p><p><a name="Directory">
+<b><font size="4">
+Header and Directory
+</font></b>
+
+</a></p><p><a name="Directory">
+The header record looks like this:
+
+</a></p><p><a name="Directory">
+<b>header</b>
+</a></p><blockquote><a name="Directory">
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">string[4] <em>magic</em>
+</td><td valign="top" width="65%">Magic number.  Always "IBSP".
+</td></tr><tr>
+<td valign="top">int <em>version</em>
+</td><td valign="top">Version number.  0x2e for the BSP files distributed with Quake 3.
+</td></tr><tr>
+<td valign="top"><b>direntry</b>[17] <em>direntries</em>
+</td><td valign="top">Lump directory, seventeen entries.
+</td></tr></tbody></table>
+</a></blockquote><a name="Directory">
+
+<p>
+Each <b>direntry</b> locates a single lump in the BSP file:
+
+</p><p>
+<b>direntry</b>
+</p><blockquote>
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">int <em>offset</em>
+</td><td valign="top" width="65%">Offset to start of lump, relative to beginning of file.
+</td></tr><tr>
+<td valign="top">int <em>length</em>
+</td><td valign="top">Length of lump.  Always a multiple of 4.
+</td></tr></tbody></table>
+</blockquote>
+
+<p>
+<b><font size="4">
+Lumps
+</font></b>
+
+</p><p>
+There are 17 lumps in a Quake 3 BSP file.  In the order that they
+appear in the lump directory, they are:
+
+</p></a><p><a name="Directory">
+<table border="0" cellspacing="0" cellpadding="0" width="75%">
+<tbody><tr><th align="left">Index
+</th><th align="left">Lump Name
+</th><th align="left">Description
+</th></tr><tr>
+</tr><tr><td valign="top">0</td><td valign="top"><a href="#Entities">Entities</a>
+</td><td>Game-related object descriptions.
+</td></tr><tr><td valign="top">1</td><td valign="top"><a href="#Textures">Textures</a>
+</td><td>Surface descriptions.
+</td></tr><tr><td valign="top">2</td><td valign="top"><a href="#Planes">Planes</a>
+</td><td>Planes used by map geometry.
+</td></tr><tr><td valign="top">3</td><td valign="top"><a href="#Nodes">Nodes</a>
+</td><td>BSP tree nodes.
+</td></tr><tr><td valign="top">4</td><td valign="top"><a href="#Leafs">Leafs</a>
+</td><td>BSP tree leaves.
+</td></tr><tr><td valign="top">5</td><td valign="top"><a href="#Leaffaces">Leaffaces</a>
+</td><td>Lists of face indices, one list per leaf.
+</td></tr><tr><td valign="top">6</td><td valign="top"><a href="#Leafbrushes">Leafbrushes</a>
+</td><td>Lists of brush indices, one list per leaf.
+</td></tr><tr><td valign="top">7</td><td valign="top"><a href="#Models">Models</a>
+</td><td>Descriptions of rigid world geometry in map.
+</td></tr><tr><td valign="top">8</td><td valign="top"><a href="#Brushes">Brushes</a>
+</td><td>Convex polyhedra used to describe solid space.
+</td></tr><tr><td valign="top">9</td><td valign="top"><a href="#Brushsides">Brushsides</a>
+</td><td>Brush surfaces.
+</td></tr><tr><td valign="top">10</td><td valign="top"><a href="#Vertexes">Vertexes</a>
+</td><td>Vertices used to describe faces.
+</td></tr><tr><td valign="top">11</td><td valign="top"><a href="#Meshverts">Meshverts</a>
+</td><td>Lists of offsets, one list per mesh.
+</td></tr><tr><td valign="top">12</td><td valign="top"><a href="#Effects">Effects</a>
+</td><td>List of special map effects.
+</td></tr><tr><td valign="top">13</td><td valign="top"><a href="#Faces">Faces</a>
+</td><td>Surface geometry.
+</td></tr><tr><td valign="top">14</td><td valign="top"><a href="#Lightmaps">Lightmaps</a>
+</td><td>Packed lightmap data.
+</td></tr><tr><td valign="top">15</td><td valign="top"><a href="#Lightvols">Lightvols</a>
+</td><td>Local illumination data.
+</td></tr><tr><td valign="top">16</td><td valign="top"><a href="#Visdata">Visdata</a>
+</td><td>Cluster-cluster visibility data.
+</td></tr></tbody></table>
+
+<!---------------------------------------------------------------------------->
+</a><a name="Entities">
+</a></p><p><a name="Entities">
+<b><font size="4">
+Entities
+</font></b>
+
+</a></p><p><a name="Entities">
+The entities lump stores game-related map information, including
+information about the map name, weapons, health, armor, triggers, spawn
+points, lights, and .md3 models to be placed in the map.  The lump contains
+only one record, a string that describes all of the entities:
+
+</a></p><p><a name="Entities">
+<b>entities</b>
+</a></p><blockquote><a name="Entities">
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">string[<em>length</em>] <em>ents</em>
+</td><td valign="top" width="65%">Entity descriptions, stored as a string.
+</td></tr></tbody></table>
+</a></blockquote><a name="Entities">
+
+<p>
+The <em>length</em> of the entity string is given by the size of the lump
+itself, as specified in the lump directory.
+
+</p></a><p><a name="Entities">
+The meanings, formats, and parameters of the various entity descriptions
+are currently outside the scope of this document.  For more information
+about entity descriptions, see the documentation to Q3Radiant, the Quake 3
+level editor.
+
+<!---------------------------------------------------------------------------->
+</a><a name="Textures">
+</a></p><p><a name="Textures">
+<b><font size="4">
+Textures
+</font></b>
+
+</a></p><p><a name="Textures">
+The textures lump stores information about surfaces and volumes, which are
+in turn associated with faces, brushes, and brushsides.  There are a total
+of <em>length</em> / sizeof(<b>texture</b>) records in the lump, where
+<em>length</em> is the size of the lump itself, as specified in the lump
+directory.
+
+</a></p><p><a name="Textures">
+<b>texture</b>
+</a></p><blockquote><a name="Textures">
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">string[64] <em>name</em>
+</td><td valign="top" width="65%">Texture name.
+</td></tr><tr>
+<td valign="top">int <em>flags</em>
+</td><td valign="top">Surface flags.
+</td></tr><tr>
+<td valign="top">int <em>contents</em>
+</td><td valign="top">Content flags.
+</td></tr></tbody></table>
+</a></blockquote><a name="Textures">
+
+<!---------------------------------------------------------------------------->
+</a><a name="Planes">
+<p>
+<b><font size="4">
+Planes
+</font></b>
+
+</p><p>
+The planes lump stores a generic set of planes that are in turn referenced
+by nodes and brushsides.  There are a total of <em>length</em> /
+sizeof(<b>plane</b>) records in the lump, where <em>length</em> is the size
+of the lump itself, as specified in the lump directory.
+
+</p><p>
+<b>plane</b>
+</p><blockquote>
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">float[3] <em>normal</em>
+</td><td valign="top" width="65%">Plane normal.
+</td></tr><tr>
+<td valign="top">float <em>dist</em>
+</td><td valign="top">Distance from origin to plane along normal.
+</td></tr></tbody></table>
+</blockquote>
+
+</a><p><a name="Planes">
+Note that planes are paired.  The pair of planes with
+indices i and i ^ 1 are coincident planes with opposing normals.
+
+<!---------------------------------------------------------------------------->
+</a><a name="Nodes">
+</a></p><p><a name="Nodes">
+<b><font size="4">
+Nodes
+</font></b>
+
+</a></p><p><a name="Nodes">
+The nodes lump stores all of the nodes in the map's BSP tree.  The BSP tree
+is used primarily as a spatial subdivision scheme, dividing the world into
+convex regions called leafs.  The first node in the lump is the tree's root
+node.  There are a total of <em>length</em> / sizeof(<b>node</b>) records
+in the lump, where <em>length</em> is the size of the lump itself, as
+specified in the lump directory.
+
+</a></p><p><a name="Nodes">
+<b>node</b>
+</a></p><blockquote><a name="Nodes">
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">int <em>plane</em>
+</td><td valign="top" width="65%">Plane index.
+</td></tr><tr>
+<td valign="top">int[2] <em>children</em>
+</td><td valign="top">Children indices.  Negative numbers are leaf indices: -(leaf+1).
+</td></tr><tr>
+<td valign="top">int[3] <em>mins</em>
+</td><td valign="top">Integer bounding box min coord.
+</td></tr><tr>
+<td valign="top">int[3] <em>maxs</em>
+</td><td valign="top">Integer bounding box max coord.
+</td></tr></tbody></table>
+</a></blockquote><a name="Nodes">
+
+<!---------------------------------------------------------------------------->
+</a><a name="Leafs">
+<p>
+<b><font size="4">
+Leafs
+</font></b>
+
+</p><p>
+The leafs lump stores the leaves of the map's BSP tree.  Each leaf is a
+convex region that contains, among other things, a cluster index (for
+determining the other leafs potentially visible from within the leaf), a
+list of faces (for rendering), and a list of brushes (for collision
+detection).  There are a total of <em>length</em> / sizeof(<b>leaf</b>)
+records in the lump, where <em>length</em> is the size of the lump itself,
+as specified in the lump directory.
+
+</p><p>
+<b>leaf</b>
+</p><blockquote>
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">int <em>cluster</em>
+</td><td valign="top" width="65%">Visdata cluster index.
+</td></tr><tr>
+<td valign="top">int <em>area</em>
+</td><td valign="top">Areaportal area.
+</td></tr><tr>
+<td valign="top">int[3] <em>mins</em>
+</td><td valign="top">Integer bounding box min coord.
+</td></tr><tr>
+<td valign="top">int[3] <em>maxs</em>
+</td><td valign="top">Integer bounding box max coord.
+</td></tr><tr>
+<td valign="top">int <em>leafface</em>
+</td><td valign="top">First leafface for leaf.
+</td></tr><tr>
+<td valign="top">int <em>n_leaffaces</em>
+</td><td valign="top">Number of leaffaces for leaf.
+</td></tr><tr>
+<td valign="top">int <em>leafbrush</em>
+</td><td valign="top">First leafbrush for leaf.
+</td></tr><tr>
+<td valign="top">int <em>n_leafbrushes</em>
+</td><td valign="top">Number of leafbrushes for leaf.
+</td></tr></tbody></table>
+</blockquote>
+
+</a><p><a name="Leafs">
+If <em>cluster</em> is negative, the leaf is outside the map or otherwise
+invalid.
+
+<!---------------------------------------------------------------------------->
+</a><a name="Leaffaces">
+</a></p><p><a name="Leaffaces">
+<b><font size="4">
+Leaffaces
+</font></b>
+
+</a></p><p><a name="Leaffaces">
+The leaffaces lump stores lists of face indices, with one list per leaf.
+There are a total of <em>length</em> / sizeof(<b>leafface</b>) records in
+the lump, where <em>length</em> is the size of the lump itself, as
+specified in the lump directory.
+
+
+</a></p><p><a name="Leaffaces">
+<b>leafface</b>
+</a></p><blockquote><a name="Leaffaces">
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">int <em>face</em>
+</td><td valign="top" width="65%">Face index.
+</td></tr></tbody></table>
+</a></blockquote><a name="Leaffaces">
+
+<!---------------------------------------------------------------------------->
+</a><a name="Leafbrushes">
+<p>
+<b><font size="4">
+Leafbrushes
+</font></b>
+
+</p><p>
+The leafbrushes lump stores lists of brush indices, with one list per leaf.
+There are a total of <em>length</em> / sizeof(<b>leafbrush</b>) records in
+the lump, where <em>length</em> is the size of the lump itself, as
+specified in the lump directory.
+
+</p><p>
+<b>leafbrush</b>
+</p><blockquote>
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">int <em>brush</em>
+</td><td valign="top" width="65%">Brush index.
+</td></tr></tbody></table>
+</blockquote>
+
+<!---------------------------------------------------------------------------->
+</a><a name="Models">
+<p>
+<b><font size="4">
+Models
+</font></b>
+
+</p><p>
+The models lump describes rigid groups of world geometry.  The first model
+correponds to the base portion of the map while the remaining models
+correspond to movable portions of the map, such as the map's doors,
+platforms, and buttons.  Each model has a list of faces and list of
+brushes; these are especially important for the movable parts of the map,
+which (unlike the base portion of the map) do not have BSP trees associated
+with them.  There are a total of <em>length</em> / sizeof(<b>models</b>)
+records in the lump, where <em>length</em> is the size of the lump itself,
+as specified in the lump directory.
+
+</p><p>
+<b>model</b>
+</p><blockquote>
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">float[3] <em>mins</em>
+</td><td valign="top" width="65%">Bounding box min coord.
+</td></tr><tr>
+<td valign="top">float[3] <em>maxs</em>
+</td><td valign="top">Bounding box max coord.
+</td></tr><tr>
+<td valign="top">int <em>face</em>
+</td><td valign="top">First face for model.
+</td></tr><tr>
+<td valign="top">int <em>n_faces</em>
+</td><td valign="top">Number of faces for model.
+</td></tr><tr>
+<td valign="top">int <em>brush</em>
+</td><td valign="top">First brush for model.
+</td></tr><tr>
+<td valign="top">int <em>n_brushes</em>
+</td><td valign="top">Number of brushes for model.
+</td></tr></tbody></table>
+</blockquote>
+
+<!---------------------------------------------------------------------------->
+</a><a name="Brushes">
+<p>
+<b><font size="4">
+Brushes
+</font></b>
+
+</p><p>
+The brushes lump stores a set of brushes, which are in turn used for
+collision detection.  Each brush describes a convex volume as defined by
+its surrounding surfaces.  There are a total of <em>length</em> /
+sizeof(<b>brushes</b>) records in the lump, where <em>length</em> is the
+size of the lump itself, as specified in the lump directory.
+
+</p><p>
+<b>brush</b>
+</p><blockquote>
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">int <em>brushside</em>
+</td><td valign="top" width="65%">First brushside for brush.
+</td></tr><tr>
+<td valign="top">int <em>n_brushsides</em>
+</td><td valign="top">Number of brushsides for brush.
+</td></tr><tr>
+<td valign="top">int <em>texture</em>
+</td><td valign="top">Texture index.
+</td></tr></tbody></table>
+</blockquote>
+
+<!---------------------------------------------------------------------------->
+</a><a name="Brushsides">
+<p>
+<b><font size="4">
+Brushsides
+</font></b>
+
+</p><p>
+The brushsides lump stores descriptions of brush bounding surfaces.  There
+are a total of <em>length</em> / sizeof(<b>brushsides</b>) records in the
+lump, where <em>length</em> is the size of the lump itself, as specified in
+the lump directory.
+
+</p><p>
+<b>brushside</b>
+</p><blockquote>
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">int <em>plane</em>
+</td><td valign="top" width="65%">Plane index.
+</td></tr><tr>
+<td valign="top">int <em>texture</em>
+</td><td valign="top">Texture index.
+</td></tr></tbody></table>
+</blockquote>
+
+<!---------------------------------------------------------------------------->
+</a><a name="Vertexes">
+<p>
+<b><font size="4">
+Vertexes
+</font></b>
+
+</p><p>
+The vertexes lump stores lists of vertices used to describe faces.  There
+are a total of <em>length</em> / sizeof(<b>vertex</b>) records in the lump,
+where <em>length</em> is the size of the lump itself, as specified in the
+lump directory.
+
+</p><p>
+<b>vertex</b>
+</p><blockquote>
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">float[3] <em>position</em>
+</td><td valign="top" width="65%">Vertex position.
+</td></tr><tr>
+<td valign="top">float[2][2] <em>texcoord</em>
+</td><td valign="top">Vertex texture coordinates.  0=surface, 1=lightmap.
+</td></tr><tr>
+<td valign="top">float[3] <em>normal</em>
+</td><td valign="top">Vertex normal.
+</td></tr><tr>
+<td valign="top">ubyte[4] <em>color</em>
+</td><td valign="top">Vertex color.  RGBA.
+</td></tr></tbody></table>
+</blockquote>
+
+<!---------------------------------------------------------------------------->
+</a><a name="Meshverts">
+<p>
+<b><font size="4">
+Meshverts
+</font></b>
+
+</p><p>
+The meshverts lump stores lists of vertex offsets, used to describe
+generalized triangle meshes.  There are a total of <em>length</em> /
+sizeof(<b>meshvert</b>) records in the lump, where <em>length</em> is the
+size of the lump itself, as specified in the lump directory.
+
+</p><p>
+<b>meshvert</b>
+</p><blockquote>
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">int <em>offset</em>
+</td><td valign="top" width="65%">Vertex index offset, relative to first vertex of
+corresponding face.
+</td></tr></tbody></table>
+</blockquote>
+
+<!---------------------------------------------------------------------------->
+</a><a name="Effects">
+<p>
+<b><font size="4">
+Effects
+</font></b>
+
+</p><p>
+The effects lump stores references to volumetric shaders (typically fog)
+which affect the rendering of a particular group of faces.  There are a
+total of <em>length</em> / sizeof(<b>effect</b>) records in the lump,
+where <em>length</em> is the size of the lump itself, as specified in the
+lump directory.
+
+</p><p>
+<b>effect</b>
+</p><blockquote>
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">string[64] <em>name</em>
+</td><td valign="top" width="65%">Effect shader.
+</td></tr><tr>
+<td valign="top">int <em>brush</em>
+</td><td valign="top">Brush that generated this effect.
+</td></tr><tr>
+<td valign="top">int <em>unknown</em>
+</td><td valign="top">Always 5, except in q3dm8, which has one effect with -1.
+</td></tr></tbody></table>
+</blockquote>
+
+<!---------------------------------------------------------------------------->
+</a><a name="Faces">
+<p>
+<b><font size="4">
+Faces
+</font></b>
+
+</p><p>
+The faces lump stores information used to render the surfaces of the map.
+There are a total of <em>length</em> / sizeof(<b>faces</b>) records in the
+lump, where <em>length</em> is the size of the lump itself, as specified in
+the lump directory.
+
+</p><p>
+<b>face</b>
+</p><blockquote>
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">int <em>texture</em>
+</td><td valign="top" width="65%">Texture index.
+</td></tr><tr>
+<td valign="top">int <em>effect</em>
+</td><td valign="top">Index into lump 12 (Effects), or -1.
+</td></tr><tr>
+<td valign="top">int <em>type</em>
+</td><td valign="top">Face type.  1=polygon, 2=patch, 3=mesh, 4=billboard
+</td></tr><tr>
+<td valign="top">int <em>vertex</em>
+</td><td valign="top">Index of first vertex.
+</td></tr><tr>
+<td valign="top">int <em>n_vertexes</em>
+</td><td valign="top">Number of vertices.
+</td></tr><tr>
+<td valign="top">int <em>meshvert</em>
+</td><td valign="top">Index of first meshvert.
+</td></tr><tr>
+<td valign="top">int <em>n_meshverts</em>
+</td><td valign="top">Number of meshverts.
+</td></tr><tr>
+<td valign="top">int <em>lm_index</em>
+</td><td valign="top">Lightmap index.
+</td></tr><tr>
+<td valign="top">int[2] <em>lm_start</em>
+</td><td valign="top">Corner of this face's lightmap image in lightmap.
+</td></tr><tr>
+<td valign="top">int[2] <em>lm_size</em>
+</td><td valign="top">Size of this face's lightmap image in lightmap.
+</td></tr><tr>
+<td valign="top">float[3] <em>lm_origin</em>
+</td><td valign="top">World space origin of lightmap.
+</td></tr><tr>
+<td valign="top">float[2][3] <em>lm_vecs</em>
+</td><td valign="top">World space lightmap s and t unit vectors.
+</td></tr><tr>
+<td valign="top">float[3] <em>normal</em>
+</td><td valign="top">Surface normal.
+</td></tr><tr>
+<td valign="top">int[2] <em>size</em>
+</td><td valign="top">Patch dimensions.
+</td></tr></tbody></table>
+</blockquote>
+
+<p>
+There are four types of faces: polygons, patches, meshes, and billboards.
+
+</p><p>
+Several components have different meanings depending on the face type.
+
+</p><p>
+For type 1 faces (polygons), <em>vertex</em> and <em>n_vertexes</em>
+describe a set of vertices that form a polygon.  The set always contains a
+loop of vertices, and sometimes also includes an additional vertex near the
+center of the polygon.  For these faces, <em>meshvert</em> and
+<em>n_meshverts</em> describe a valid polygon triangulation.  Every three
+meshverts describe a triangle.  Each meshvert is an offset from the first
+vertex of the face, given by <em>vertex</em>.
+
+</p><p>
+For type 2 faces (patches), <em>vertex</em> and <em>n_vertexes</em>
+describe a 2D rectangular grid of control vertices with dimensions given by
+<em>size</em>.  Within this rectangular grid, regions of 3×3 vertices
+represent biquadratic Bezier patches.  Adjacent patches share a line of
+three vertices.  There are a total of
+(<em>size</em>[0]&nbsp;-&nbsp;1)&nbsp;/&nbsp;2 by
+(<em>size</em>[1]&nbsp;-&nbsp;1)&nbsp;/&nbsp;2 patches.  Patches in the grid start at (i,&nbsp;j) given by:
+
+</p><blockquote>
+i = 2n, n in [ 0 .. (<em>size</em>[0] - 1) / 2 ), and<br>
+j = 2m, m in [ 0 .. (<em>size</em>[1] - 1) / 2 ).
+</blockquote>
+
+<p>
+For type 3 faces (meshes), <em>meshvert</em> and <em>n_meshverts</em> are
+used to describe the independent triangles that form the mesh.  As with
+type 1 faces, every three meshverts describe a triangle, and each meshvert
+is an offset from the first vertex of the face, given by <em>vertex</em>.
+
+</p><p>
+For type 4 faces (billboards), <em>vertex</em> describes the single vertex
+that determines the location of the billboard.  Billboards are used for
+effects such as flares.  Exactly how each billboard vertex is to be
+interpreted has not been investigated.
+
+</p><p>
+The <em>lm_</em> variables are primarily used to deal with lightmap data.
+A face that has a lightmap has a non-negative <em>lm_index</em>.  For such
+a face, <em>lm_index</em> is the index of the image in the lightmaps lump
+that contains the lighting data for the face.  The data in the lightmap
+image can be located using the rectangle specified by <em>lm_start</em> and
+<em>lm_size</em>.
+
+</p><p>
+For type 1 faces (polygons) only, <em>lm_origin</em> and <em>lm_vecs</em>
+can be used to compute the world-space positions corresponding to lightmap
+samples.  These positions can in turn be used to compute dynamic lighting
+across the face.
+
+</p></a><p><a name="Faces">
+None of the <em>lm_</em> variables are used to compute texture coordinates
+for indexing into lightmaps.  In fact, lightmap coordinates need not be
+computed.  Instead, lightmap coordinates are simply stored with the
+vertices used to describe each face.
+
+<!---------------------------------------------------------------------------->
+</a><a name="Lightmaps">
+</a></p><p><a name="Lightmaps">
+<b><font size="4">
+Lightmaps
+</font></b>
+
+</a></p><p><a name="Lightmaps">
+The lightmaps lump stores the light map textures used make surface lighting
+look more realistic.  There are a total of <em>length</em> /
+sizeof(<b>lightmap</b>) records in the lump, where <em>length</em> is the
+size of the lump itself, as specified in the lump directory.
+
+</a></p><p><a name="Lightmaps">
+<b>lightmap</b>
+</a></p><blockquote><a name="Lightmaps">
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">ubyte[128][128][3] <em>map</em>
+</td><td valign="top" width="65%">Lightmap color data.  RGB.
+</td></tr></tbody></table>
+</a></blockquote><a name="Lightmaps">
+
+<!---------------------------------------------------------------------------->
+</a><a name="Lightvols">
+<p>
+<b><font size="4">
+Lightvols
+</font></b>
+
+</p><p>
+The lightvols lump stores a uniform grid of lighting information used to
+illuminate non-map objects.  There are a total of <em>length</em> /
+sizeof(<b>lightvol</b>) records in the lump, where <em>length</em> is the
+size of the lump itself, as specified in the lump directory.
+
+</p><p>
+Lightvols make up a 3D grid whose dimensions are:
+
+</p><blockquote>
+nx = floor(models[0].maxs[0] / 64) - ceil(models[0].mins[0] / 64) + 1<br>
+ny = floor(models[0].maxs[1] / 64) - ceil(models[0].mins[1] / 64) + 1<br>
+nz = floor(models[0].maxs[2] / 128) - ceil(models[0].mins[2] / 128) + 1
+</blockquote>
+
+<p>
+<b>lightvol</b>
+</p><blockquote>
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">ubyte[3] <em>ambient</em>
+</td><td valign="top" width="65%">Ambient color component.  RGB.
+</td></tr><tr>
+<td valign="top">ubyte[3] <em>directional</em>
+</td><td valign="top">Directional color component.  RGB.
+</td></tr><tr>
+<td valign="top">ubyte[2] <em>dir</em>
+</td><td valign="top">Direction to light.  0=phi, 1=theta.
+</td></tr></tbody></table>
+</blockquote>
+
+<!---------------------------------------------------------------------------->
+</a><a name="Visdata">
+<p>
+<b><font size="4">
+Visdata
+</font></b>
+
+</p><p>
+The visdata lump stores bit vectors that provide cluster-to-cluster
+visibility information.  There is exactly one visdata record, with a
+<em>length</em> equal to that specified in the lump directory.
+
+</p><p>
+<b>visdata</b>
+</p><blockquote>
+<table border="0" cellspacing="0" cellpadding="0" width="100%">
+<tbody><tr>
+<td valign="top" width="25%">int <em>n_vecs</em>
+</td><td valign="top" width="65%">Number of vectors.
+</td></tr><tr>
+<td valign="top" width="25%">int <em>sz_vecs</em>
+</td><td valign="top" width="65%">Size of each vector, in bytes.
+</td></tr><tr>
+<td valign="top" width="25%">ubyte[<em>n_vecs</em> * <em>sz_vecs</em>] <em>vecs</em>
+</td><td valign="top" width="65%">Visibility data.  One bit per cluster per vector.
+</td></tr></tbody></table>
+</blockquote>
+
+<p>
+Cluster x is visible from cluster y if the (1 &lt;&lt; y % 8) bit of
+<em>vecs</em>[x * <em>sz_vecs</em> + y / 8] is set.
+
+</p></a><p><a name="Visdata">
+Note that clusters are associated with leaves.
+
+
+
+<!---------------------------------------------------------------------------->
+</a><a name="Issues">
+</a></p><p><a name="Issues">
+<table border="1" cellpadding="0" cellspacing="0" width="100%" bgcolor="#ffffd0">
+<tbody><tr><td width="100%">
+<table border="0" cellpadding="0" cellspacing="0" width="100%">
+<tbody><tr><td>
+<b><font size="4">Known Issues and Missing Items</font></b>
+</td>
+<td align="right">
+<a href="https://www.mralligator.com/q3/">[top]</a>
+</td>
+</tr></tbody></table>
+</td></tr></tbody></table>
+
+</a></p><p><a name="Issues">
+This document is very brief.  I have gathered more information, but have
+not had time to write it up.  Occasionally, I add more information to this
+document.
+
+</a></p><p><a name="Issues">
+At some point I put together a page that describes </a><a href="https://www.mralligator.com/q3/trimesh/">triangle meshes and other q3 leaf elements</a>.  I forget
+the exact reason I created that page, but you might find it interesting.
+
+</p><p>
+Feel free to ask for clarification, but please accept my apologies if I
+can't find the time to answer.
+
+<!--
+<p>
+There are several known issues and missing items as of March 24, 2000:
+
+<ul>
+<li>I have more specific info, but I have not yet bothered to type it up.
+</ul>
+-->
+
+</p><p>
+</p><hr>
+<em><font size="3">Copyright © 2000 <a href="http://graphics.stanford.edu/~kekoa/">Kekoa
+Proudfoot</a>.  All rights reserved.</font></em>
+
+<p>
+<font size="2">
+Keywords: quake 3 quake3 q3 arena quake3arena q3arena map bsp file spec specs format
+</font>
+
+<script src="http://www.google-analytics.com/urchin.js" type="text/javascript">
+</script>
+<script type="text/javascript">
+_uacct = "UA-2558573-2";
+urchinTracker();
+</script>
+
+
+
+</p></body></html>
