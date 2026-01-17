@@ -45,6 +45,9 @@ The application will follow a strict unidirectional data flow composed of three 
 
 * **Responsibility:** Handling filesystem operations and binary parsing.
 * **BSP Specs:**: `docs/Unofficial Quake 3 Map Specs.html`, `docs/qfiles.h` and `docs/tr_local.h`.
+* **Test Data:**
+  - Example `.pk3` file: `data/pak0.pk3`.
+  - Example `.bsp` file: `maps/q3dm1.bsp`.
 * **Key Components:**
 * **PK3 Interface:** Treating `.pk3` files as ZIP archives. (Recommendation: Use `miniz` or `zlib`).
 * **BSP Parser:** Reading the specific IBSP lumps (Header `IBSP`, Version `0x2E`).
@@ -69,16 +72,16 @@ The application will follow a strict unidirectional data flow composed of three 
 
 * **Responsibility:** Transformation of raw Q3 structures into generic 3D geometry.
 * **Conversions:**
-* **Coordinate System:** Convert Q3 (Z-up, X-forward) to glTF (Y-up, Z-forward).
-* *Matrix:* Rotate -90° on X-axis.
-* *Light Source:* Convert the sun light source into a glTF punctual directional light source.
-* *Units": from inches to meters.
+  - **Coordinate System:** Convert Q3 (Z-up, X-forward) to glTF (Y-up, Z-forward).
+  - **Matrix:** Rotate -90° on X-axis.
+  - **Light Source:** Convert the sun light source into a glTF punctual directional light source.
+  - **Units:** from inches to meters.
 
 
 * **Geometry Processing:**
-* *Polygons (Type 1) & Meshes (Type 3):* Resolve `MeshVerts` offsets to absolute vertex indices.
-* *Patches (Type 2):* (Optional Phase 2) Tessellate Bezier patches into triangles. For Phase 1, these can be skipped or exported as control points.
-* *Billboards (Type 4):* Export as quad geometry centered on the vertex.
+  - *Polygons (Type 1) & Meshes (Type 3):* Resolve `MeshVerts` offsets to absolute vertex indices.
+  - *Patches (Type 2):* (Optional Phase 2) Tessellate Bezier patches into triangles. For Phase 1, these can be skipped or exported as control points.
+  - *Billboards (Type 4):* Export as quad geometry centered on the vertex.
 
 
 * **Texture Paths:** Strip Q3 specific extensions (`.tga`, `.jpg`) and remap shader paths to generic material names.
@@ -89,9 +92,9 @@ The application will follow a strict unidirectional data flow composed of three 
 
 * **Responsibility:** Serialization of the intermediate data to disk.
 * **Key Components:**
-* **Buffer Management:** Writing binary `.bin` chunks for vertex attributes (POS, NORM, TEXCOORD_0).
-* **JSON Construction:** Generating the glTF node hierarchy. (Recommendation: `tinygltf` or `nlohmann/json`).
-* **Manifest Generator:** Parallel writing of the `manifest.json` linking `BSP_Face_ID` -> `glTF_Mesh_Primitive_ID`.
+  - **Buffer Management:** Writing binary `.bin` chunks for vertex attributes (POS, NORM, TEXCOORD_0).
+  - **JSON Construction:** Generating the glTF node hierarchy. (Recommendation: `tinygltf` or `nlohmann/json`).
+  - **Manifest Generator:** Parallel writing of the `manifest.json` linking `BSP_Face_ID` -> `glTF_Mesh_Primitive_ID`.
 
 
 
