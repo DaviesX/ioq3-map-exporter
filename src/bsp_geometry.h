@@ -1,26 +1,25 @@
 #ifndef IOQ3_MAP_BSP_GEOMETRY_H_
 #define IOQ3_MAP_BSP_GEOMETRY_H_
 
+#include <stdint.h>
+
+#include <Eigen/Dense>  // IWYU pragma: keep
 #include <unordered_map>
 #include <variant>
 #include <vector>
 
-#include "bsp.h"
-
 namespace ioq3_map {
 
+struct BSP;
+
 // --- Raw Q3 Data Structures (matching qfiles.h) ---
-
-using byte = unsigned char;
-using vec3_t = float[3];
-using vec2_t = float[2];
-
-struct drawVert_t {
-  vec3_t xyz;
-  vec2_t st;
-  vec2_t lightmap;
-  vec3_t normal;
-  byte color[4];
+// Vertex data layout as stored in the BSP file.
+struct vertex_t {
+  Eigen::Vector3f xyz;
+  Eigen::Vector2f st;
+  Eigen::Vector2f lightmap;
+  Eigen::Vector3f normal;
+  uint8_t color[4];
 };
 
 enum class MapSurfaceType : int {
@@ -31,26 +30,27 @@ enum class MapSurfaceType : int {
   FLARE = 4
 };
 
+// Face data layout as stored in the BSP file.
 struct dsurface_t {
-  int shaderNum;
-  int fogNum;
-  int surfaceType;
+  int shader_no;
+  int fog_num;
+  MapSurfaceType surface_type;
 
-  int firstVert;
-  int numVerts;
+  int first_vert;
+  int num_verts;
 
-  int firstIndex;
-  int numIndexes;
+  int first_index;
+  int num_indexes;
 
-  int lightmapNum;
-  int lightmapX, lightmapY;
-  int lightmapWidth, lightmapHeight;
+  int lightmap_num;
+  int lightmap_x, lightmap_y;
+  int lightmap_width, lightmap_height;
 
-  vec3_t lightmapOrigin;
-  vec3_t lightmapVecs[3];
+  Eigen::Vector3f lightmap_origin;
+  Eigen::Vector3f lightmap_vecs[3];
 
-  int patchWidth;
-  int patchHeight;
+  int patch_width;
+  int patch_height;
 };
 
 // --- High-Level Geometry Abstractions ---
@@ -60,13 +60,13 @@ using BSPTextureIndex = int;
 
 // For MST_TRIANGLE_SOUP (Type 3)
 struct BSPMesh {
-  std::vector<drawVert_t> vertices;
+  std::vector<vertex_t> vertices;
   std::vector<int> indices;
 };
 
 // For MST_PLANAR (Type 1)
 struct BSPPolygon {
-  std::vector<drawVert_t> vertices;
+  std::vector<vertex_t> vertices;
   std::vector<int> indices;
 };
 
@@ -74,7 +74,7 @@ struct BSPPolygon {
 struct BSPPatch {
   int width;
   int height;
-  std::vector<drawVert_t> control_points;
+  std::vector<vertex_t> control_points;
 };
 
 struct BSPGeometry {

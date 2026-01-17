@@ -3,8 +3,10 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <cmath>
+#include <utility>
+#include <variant>
 
+#include "bsp.h"
 #include "bsp_geometry.h"
 
 namespace ioq3_map {
@@ -29,7 +31,7 @@ TEST(SceneTest, AssembleBSPObjectsPlanarTransform) {
   // X: 100 * 0.0254 = 2.54
   // Y: 300 * 0.0254 = 7.62
   // Z: -200 * 0.0254 = -5.08
-  drawVert_t v0;
+  vertex_t v0;
   v0.xyz[0] = 100.0f;
   v0.xyz[1] = 200.0f;
   v0.xyz[2] = 300.0f;

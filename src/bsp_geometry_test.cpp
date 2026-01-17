@@ -5,7 +5,11 @@
 
 #include <list>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
+
+#include "bsp.h"
 
 namespace ioq3_map {
 namespace {
@@ -41,7 +45,7 @@ TEST_F(BspGeometryTest, BuildBSPGeometriesSinglePlanar) {
   BSP bsp;
 
   // 4 Vertices
-  std::vector<drawVert_t> verts(4);
+  std::vector<vertex_t> verts(4);
   // Fill some data for validation
   verts[0].xyz[0] = 0;
   verts[1].xyz[0] = 1;
@@ -55,12 +59,12 @@ TEST_F(BspGeometryTest, BuildBSPGeometriesSinglePlanar) {
 
   // 1 Surface (Planar)
   dsurface_t face{};
-  face.shaderNum = 5;
-  face.surfaceType = static_cast<int>(MapSurfaceType::PLANAR);
-  face.firstVert = 0;
-  face.numVerts = 4;
-  face.firstIndex = 0;
-  face.numIndexes = 6;
+  face.shader_no = 5;
+  face.surface_type = static_cast<int>(MapSurfaceType::PLANAR);
+  face.first_vert = 0;
+  face.num_verts = 4;
+  face.first_index = 0;
+  face.num_indexes = 6;
 
   std::vector<dsurface_t> faces = {face};
   SetLump(bsp, LumpType::Faces, CreateLump(faces));
@@ -84,7 +88,7 @@ TEST_F(BspGeometryTest, BuildBSPGeometriesMeshWithOffset) {
   BSP bsp;
 
   // 10 Vertices total. Surface uses 3 starting at index 5.
-  std::vector<drawVert_t> verts(10);
+  std::vector<vertex_t> verts(10);
   verts[5].xyz[0] = 5.0f;
   verts[6].xyz[0] = 6.0f;
   verts[7].xyz[0] = 7.0f;
@@ -97,11 +101,11 @@ TEST_F(BspGeometryTest, BuildBSPGeometriesMeshWithOffset) {
   SetLump(bsp, LumpType::MeshVerts, CreateLump(meshverts));
 
   dsurface_t face{};
-  face.surfaceType = static_cast<int>(MapSurfaceType::TRIANGLE_SOUP);
-  face.firstVert = 5;
-  face.numVerts = 3;
-  face.firstIndex = 0;
-  face.numIndexes = 3;
+  face.surface_type = static_cast<int>(MapSurfaceType::TRIANGLE_SOUP);
+  face.first_vert = 5;
+  face.num_verts = 3;
+  face.first_index = 0;
+  face.num_indexes = 3;
 
   std::vector<dsurface_t> faces = {face};
   SetLump(bsp, LumpType::Faces, CreateLump(faces));
@@ -124,15 +128,15 @@ TEST_F(BspGeometryTest, BuildBSPGeometriesPatch) {
   BSP bsp;
 
   // 9 Control points for a 3x3 patch
-  std::vector<drawVert_t> verts(9);
+  std::vector<vertex_t> verts(9);
   SetLump(bsp, LumpType::Vertexes, CreateLump(verts));
 
   dsurface_t face{};
-  face.surfaceType = static_cast<int>(MapSurfaceType::PATCH);
-  face.firstVert = 0;
-  face.numVerts = 9;
-  face.patchWidth = 3;
-  face.patchHeight = 3;
+  face.surface_type = static_cast<int>(MapSurfaceType::PATCH);
+  face.first_vert = 0;
+  face.num_verts = 9;
+  face.patch_width = 3;
+  face.patch_height = 3;
 
   std::vector<dsurface_t> faces = {face};
   SetLump(bsp, LumpType::Faces, CreateLump(faces));

@@ -1,7 +1,7 @@
 #ifndef IOQ3_MAP_SCENE_H_
 #define IOQ3_MAP_SCENE_H_
 
-#include <Eigen/Dense>
+#include <Eigen/Dense>  // IWYU pragma: keep
 #include <cstdint>
 #include <filesystem>
 #include <optional>

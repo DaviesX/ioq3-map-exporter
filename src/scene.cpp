@@ -2,6 +2,7 @@
 
 #include <unordered_map>
 
+#include "bsp.h"
 #include "bsp_geometry.h"
 
 namespace ioq3_map {
@@ -13,19 +14,19 @@ namespace {
 // x' = x
 // y' = z
 // z' = -y
-Eigen::Vector3f TransformPoint(const vec3_t& p) {
+Eigen::Vector3f TransformPoint(const Eigen::Vector3f& p) {
   // Scale (inches to meters)
   constexpr float kScale = 0.0254f;
-  return Eigen::Vector3f(p[0] * kScale, p[2] * kScale, -p[1] * kScale);
+  return Eigen::Vector3f(p.x() * kScale, p.z() * kScale, -p.y() * kScale);
 }
 
-Eigen::Vector3f TransformNormal(const vec3_t& n) {
+Eigen::Vector3f TransformNormal(const Eigen::Vector3f& n) {
   // Rotate -90 degrees around X axis.
-  return Eigen::Vector3f(n[0], n[2], -n[1]);
+  return Eigen::Vector3f(n.x(), n.z(), -n.y());
 }
 
-Eigen::Vector2f TransformUV(const vec2_t& uv) {
-  return Eigen::Vector2f(uv[0], uv[1]);
+Eigen::Vector2f TransformUV(const Eigen::Vector2f& uv) {
+  return Eigen::Vector2f(uv.x(), uv.y());
 }
 
 struct dshader_t {
