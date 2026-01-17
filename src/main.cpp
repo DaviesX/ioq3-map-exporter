@@ -10,6 +10,8 @@
 
 #include "archives.h"
 #include "bsp.h"
+#include "bsp_geometry.h"
+#include "scene.h"
 
 DEFINE_string(base_path, "", "Path to Quake 3 .pk3 archives");
 DEFINE_string(map, "", "Map name (e.g., q3dm1)");
@@ -64,6 +66,17 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "Successfully loaded BSP header. Lumps found: "
             << bsp->lumps.size();
 
-  LOG(INFO) << "Phase 1 Complete. Exiting.";
+  // 5. Build Geometry
+  LOG(INFO) << "Building BSP Geometry...";
+  auto bsp_geometries = ioq3_map::BuildBSPGeometries(*bsp);
+  LOG(INFO) << "Parsed " << bsp_geometries.size() << " BSP surfaces.";
+
+  // 6. Assemble Scene
+  LOG(INFO) << "Assembling Scene...";
+  auto scene = ioq3_map::AssembleBSPObjects(*bsp, bsp_geometries);
+  LOG(INFO) << "Scene Assembled. Total Geometries: " << scene.geometries.size();
+  LOG(INFO) << "Total Materials: " << scene.materials.size();
+
+  LOG(INFO) << "Phase 2 Complete. Exiting.";
   return 0;
 }
