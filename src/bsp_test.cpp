@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <utility>
 #include <vector>
 
 namespace ioq3_map {

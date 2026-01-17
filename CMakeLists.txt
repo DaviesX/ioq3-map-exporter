@@ -2,6 +2,17 @@ cmake_minimum_required(VERSION 3.16)
 project(ioq3_map_exporter)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+option(ENABLE_IWYU "Enable Include What You Use" ON)
+if(ENABLE_IWYU)
+  find_program(IWYU_PATH NAMES include-what-you-use iwyu)
+  if(IWYU_PATH)
+    message(STATUS "IWYU found: ${IWYU_PATH}")
+    set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE ${IWYU_PATH})
+  else()
+    message(WARNING "include-what-you-use not found, but ENABLE_IWYU is ON")
+  endif()
+endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 

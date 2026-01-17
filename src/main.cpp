@@ -1,7 +1,12 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include <filesystem>
 #include <iostream>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #include "archives.h"
 #include "bsp.h"

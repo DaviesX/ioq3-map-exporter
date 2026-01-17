@@ -1,11 +1,14 @@
 #include "archives.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <minizip/zip.h>
+#include <stddef.h>
+#include <zlib.h>
 
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+#include <string>
 
 namespace ioq3_map {
 namespace {
