@@ -60,7 +60,7 @@ TEST_F(BspGeometryTest, BuildBSPGeometriesSinglePlanar) {
   // 1 Surface (Planar)
   dsurface_t face{};
   face.shader_no = 5;
-  face.surface_type = static_cast<int>(MapSurfaceType::PLANAR);
+  face.surface_type = MapSurfaceType::PLANAR;
   face.first_vert = 0;
   face.num_verts = 4;
   face.first_index = 0;
@@ -101,7 +101,7 @@ TEST_F(BspGeometryTest, BuildBSPGeometriesMeshWithOffset) {
   SetLump(bsp, LumpType::MeshVerts, CreateLump(meshverts));
 
   dsurface_t face{};
-  face.surface_type = static_cast<int>(MapSurfaceType::TRIANGLE_SOUP);
+  face.surface_type = MapSurfaceType::TRIANGLE_SOUP;
   face.first_vert = 5;
   face.num_verts = 3;
   face.first_index = 0;
@@ -132,7 +132,7 @@ TEST_F(BspGeometryTest, BuildBSPGeometriesPatch) {
   SetLump(bsp, LumpType::Vertexes, CreateLump(verts));
 
   dsurface_t face{};
-  face.surface_type = static_cast<int>(MapSurfaceType::PATCH);
+  face.surface_type = MapSurfaceType::PATCH;
   face.first_vert = 0;
   face.num_verts = 9;
   face.patch_width = 3;
