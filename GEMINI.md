@@ -116,11 +116,13 @@ The application will follow a strict unidirectional data flow composed of three 
 Make sure all functions are unit tested.
 
 ## Phase 2: Geometry Extraction
-
+Read the specs in `docs/Unofficial Quake 3 Map Specs.html` carefully. 
 1. **Lump Parsing:** Define C++ structs for faces and vertices, etc., exactly matching the Q3 specs.
+  - Create relevant structs and functions in `src/bsp_geometry.h`, `src/bsp_geometry.cpp`, `src/bsp_geometry_test.cpp`.
 2. **Triangulation:** Write a loop that iterates through all `Faces`.
-* If `type == 1` (Polygon) or `type == 3` (Mesh): Read `n_meshverts` from the `MeshVerts` lump starting at `meshvert` offset.
-* Store these as a `RenderBatch`.
+  - If `type == 1` (Polygon) or `type == 3` (Mesh): Read `n_meshverts` from the `MeshVerts` lump starting at `meshvert` offset.
+  - For Beizer patches, read the specs and take reference of the `docs/tr_curve.c` file.
+3. **Assembly:** Write a function AssembleBSPObjects in `src/scene.h` that takes the bsp_geometry and assemble it into the Scene struct. We will add new types of object to the argument of this function as we progress. Implement the function in `src/scene.cpp` and make sure it is unit tested via `src/scene_test.cpp`.
 
 ## Phase 3: Material/Shader Extraction
 

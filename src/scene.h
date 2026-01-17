@@ -6,7 +6,6 @@
 #include <filesystem>
 #include <optional>
 #include <string>
-#include <variant>
 #include <vector>
 
 namespace ioq3_map {
@@ -22,8 +21,6 @@ struct Material {
 
   // Albedo / Transparency
   Texture albedo;
-  Texture normal_texture;
-  Texture metallic_roughness_texture;  // Metallic in B, Roughness in G
 
   // Emission (for Area Lights).
   float emission_intensity = 0.0f;
