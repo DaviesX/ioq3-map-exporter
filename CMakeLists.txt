@@ -1,8 +1,19 @@
 cmake_minimum_required(VERSION 3.16)
 project(ioq3_map_exporter)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_compile_options(
+  $<$<CONFIG:Release>:-O3>
+  $<$<CONFIG:Release>:-flto=auto>
+  $<$<CONFIG:Release>:-march=native>
+)
+add_link_options(
+  $<$<CONFIG:Release>:-flto=auto>
+  $<$<CONFIG:Release>:-O3>
+)
 
 # Dependencies
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
@@ -13,13 +24,15 @@ find_package(gflags REQUIRED)
 find_package(GTest REQUIRED)
 
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(MINIZIP REQUIRED minizip)
+# This searches for minizip.pc installed by libminizip-dev
+pkg_check_modules(MINIZIP REQUIRED IMPORTED_TARGET minizip)
 
 # tinygltf is header-only.
-find_path(TINYGLTF_INCLUDE_DIR tiny_gltf.h)
-if (NOT TINYGLTF_INCLUDE_DIR)
-    message(FATAL_ERROR "tiny_gltf.h not found")
+find_path(TINYGLTF_INCLUDE_DIR NAMES tiny_gltf.h)
+if(NOT TINYGLTF_INCLUDE_DIR)
+  message(FATAL_ERROR "tinygltf not found")
 endif()
+add_library(tinygltf INTERFACE)
 
 # Library
 add_library(ioq3_map SHARED
