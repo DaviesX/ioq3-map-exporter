@@ -8,6 +8,9 @@ namespace ioq3_map {
 // Triangulates a convex polygon into a triangle mesh using a triangle fan.
 BSPMesh Triangulate(const BSPPolygon& polygon);
 
+// Triangulates a quadratic Bezier patch into a grid mesh.
+BSPMesh Triangulate(const BSPPatch& patch, int subdivisions = 10);
+
 }  // namespace ioq3_map
 
 #endif  // IOQ3_MAP_TRIANGULATION_H_

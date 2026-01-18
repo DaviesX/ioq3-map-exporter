@@ -76,11 +76,6 @@ Scene AssembleBSPObjects(
   Scene scene;
 
   for (const auto& [surface_idx, geo] : bsp_geometries) {
-    if (std::holds_alternative<BSPPatch>(geo.primitive)) {
-      // TODO: Handle Patches (Tessellation)
-      continue;
-    }
-
     Geometry out_geo;
     out_geo.material_id = geo.texture_index;
     out_geo.transform = Eigen::Affine3f::Identity();
@@ -91,6 +86,10 @@ Scene AssembleBSPObjects(
       ToGeometry(mesh, &out_geo);
     } else if (std::holds_alternative<BSPMesh>(geo.primitive)) {
       const auto& mesh = std::get<BSPMesh>(geo.primitive);
+      ToGeometry(mesh, &out_geo);
+    } else if (std::holds_alternative<BSPPatch>(geo.primitive)) {
+      const auto& patch = std::get<BSPPatch>(geo.primitive);
+      BSPMesh mesh = Triangulate(patch);
       ToGeometry(mesh, &out_geo);
     }
 

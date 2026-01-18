@@ -75,7 +75,9 @@ TEST(SceneTest, AssembleBSPObjectsIgnoredPatch) {
   bsp_geometries.emplace(0, std::move(geo));
 
   Scene scene = AssembleBSPObjects(bsp, bsp_geometries);
-  EXPECT_THAT(scene.geometries, SizeIs(0));
+  // Patch is processed, but empty because dimensions are invalid/zero.
+  ASSERT_THAT(scene.geometries, SizeIs(1));
+  EXPECT_THAT(scene.geometries[0].vertices, SizeIs(0));
 }
 
 }  // namespace
