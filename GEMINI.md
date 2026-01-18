@@ -30,7 +30,7 @@ Dependencies:
 Coding Style: google c++ style guide
 Building and testing:
 ```bash
-cmake -DCMAKE_BUILD_TYPE=Release -B build -S . && cmake --build build --parallel 12 && ./build/ioq3_map_exporter
+cmake -DCMAKE_BUILD_TYPE=Release -B build -S . && cmake --build build --parallel 12 && ./build/ioq3_map_exporter_test
 ```
 Expected binaries:
 * `build/libioq3_map.so`

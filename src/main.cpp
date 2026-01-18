@@ -49,7 +49,8 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "Mounted VFS at: " << vfs->mount_point;
 
   // 3. Locate Map
-  std::filesystem::path map_path = vfs->mount_point / FLAGS_map;
+  std::filesystem::path map_path =
+      vfs->mount_point / "maps" / (FLAGS_map + ".bsp");
   if (!std::filesystem::exists(map_path)) {
     LOG(ERROR) << "Map file not found in VFS: " << map_path;
     return 1;
