@@ -4,6 +4,7 @@
 
 #include "bsp.h"
 #include "bsp_geometry.h"
+#include "triangulation.h"
 
 namespace ioq3_map {
 
@@ -48,6 +49,25 @@ const T* GetLumpData(const BSP& bsp, LumpType type, size_t& count) {
   return reinterpret_cast<const T*>(it->second.data());
 }
 
+void ToGeometry(const BSPMesh& mesh, Geometry* out_geometry) {
+  out_geometry->vertices.reserve(mesh.vertices.size());
+  out_geometry->normals.reserve(mesh.vertices.size());
+  out_geometry->texture_uvs.reserve(mesh.vertices.size());
+  out_geometry->lightmap_uvs.reserve(mesh.vertices.size());
+
+  for (const auto& v : mesh.vertices) {
+    out_geometry->vertices.push_back(TransformPoint(v.xyz));
+    out_geometry->normals.push_back(TransformNormal(v.normal));
+    out_geometry->texture_uvs.push_back(TransformUV(v.st));
+    out_geometry->lightmap_uvs.push_back(TransformUV(v.lightmap));
+  }
+
+  out_geometry->indices.reserve(mesh.indices.size());
+  for (int idx : mesh.indices) {
+    out_geometry->indices.push_back(static_cast<uint32_t>(idx));
+  }
+}
+
 }  // namespace
 
 Scene AssembleBSPObjects(
@@ -65,32 +85,13 @@ Scene AssembleBSPObjects(
     out_geo.material_id = geo.texture_index;
     out_geo.transform = Eigen::Affine3f::Identity();
 
-    // Helper lambda to convert vertices and indices
-    auto convert_mesh_data = [&](const auto& vertices, const auto& indices) {
-      out_geo.vertices.reserve(vertices.size());
-      out_geo.normals.reserve(vertices.size());
-      out_geo.texture_uvs.reserve(vertices.size());
-      out_geo.lightmap_uvs.reserve(vertices.size());
-
-      for (const auto& v : vertices) {
-        out_geo.vertices.push_back(TransformPoint(v.xyz));
-        out_geo.normals.push_back(TransformNormal(v.normal));
-        out_geo.texture_uvs.push_back(TransformUV(v.st));
-        out_geo.lightmap_uvs.push_back(TransformUV(v.lightmap));
-      }
-
-      out_geo.indices.reserve(indices.size());
-      for (int idx : indices) {
-        out_geo.indices.push_back(static_cast<uint32_t>(idx));
-      }
-    };
-
     if (std::holds_alternative<BSPPolygon>(geo.primitive)) {
       const auto& poly = std::get<BSPPolygon>(geo.primitive);
-      convert_mesh_data(poly.vertices, poly.indices);
+      BSPMesh mesh = Triangulate(poly);
+      ToGeometry(mesh, &out_geo);
     } else if (std::holds_alternative<BSPMesh>(geo.primitive)) {
       const auto& mesh = std::get<BSPMesh>(geo.primitive);
-      convert_mesh_data(mesh.vertices, mesh.indices);
+      ToGeometry(mesh, &out_geo);
     }
 
     scene.geometries.emplace(surface_idx, std::move(out_geo));

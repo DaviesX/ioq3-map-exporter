@@ -51,6 +51,7 @@ add_library(ioq3_map SHARED
     src/bsp.cpp
     src/bsp_geometry.cpp
     src/scene.cpp
+    src/triangulation.cpp
 )
 
 target_link_libraries(ioq3_map PUBLIC
@@ -79,6 +80,7 @@ add_executable(ioq3_map_exporter_test
     src/bsp_test.cpp
     src/bsp_geometry_test.cpp
     src/scene_test.cpp
+    src/triangulation_test.cpp
 )
 target_link_libraries(ioq3_map_exporter_test PRIVATE
     ioq3_map
