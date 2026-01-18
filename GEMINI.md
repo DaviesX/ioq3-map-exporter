@@ -126,7 +126,18 @@ Read the specs in `docs/Unofficial Quake 3 Map Specs.html` carefully.
 
 ## Phase 3: Material/Shader Extraction
 
- * TBD
+1. **Shader Parsing:**: Add a module called shader_parser.h that parses the shader scripts (*.shader) in the `/scripts` folder of the Virtual File System. A shader script contains a list of shader. Each shader starts with a "path-like" name, e.g., "textures/base_light/geolight". Below, is the block that describes the shader's properties. Within the block, there are a sequence of render passes (Shader specs: https://icculus.org/gtkradiant/documentation/Q3AShader_Manual/). Example shader file: `docs/base_light.shader`.
+  - For simplicity, we will mostly process the "default" shader, that is, the shader whose name can't be found in the parsed shader scripts and there present a texture image that can be found in the `/textures` folder of the Virtual File System.
+  - The other case is the emissive shader. Look for the keyword "q3map_surfacelight" in the shader block. If found, flag the material as emissive. The albedo map (*.tga/*.jpg/etc.) follows the keyword "q3map_lightimage".
+  - We will handle other shaders in a later phase.
+
+2. **Lump Parsing:** Define C++ structs for shaders, etc., exactly matching the Q3 specs.
+  - Create relevant structs and functions in `src/bsp_material.h`, `src/bsp_material.cpp`, `src/bsp_material_test.cpp`.
+  - Add a function called BuildBSPMaterials() that takes the BSP as argument and returns a map of BSPTextureIndex to Material.
+
+3. **Assembly:** Update the function AssembleBSPObjects with a new argument called `bsp_materials` that takes the map of BSPTextureIndex to Material as argument.
+
+4. **Main:** Update the main function to call BuildBSPMaterials and pass the result to AssembleBSPObjects.
 
 ## Phase 4: The glTF Writer
 
