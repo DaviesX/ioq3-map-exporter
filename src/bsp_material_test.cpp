@@ -4,6 +4,7 @@
 
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <vector>
 
 #include "bsp.h"
@@ -14,8 +15,21 @@ namespace {
 
 class BspMaterialTest : public ::testing::Test {
  protected:
+  std::filesystem::path temp_dir;
+
   void SetUp() override {
-    //
+    // Create a unique temp directory for the VFS
+    temp_dir = std::filesystem::temp_directory_path() / "ioq3_map_test_vfs";
+    if (std::filesystem::exists(temp_dir)) {
+      std::filesystem::remove_all(temp_dir);
+    }
+    std::filesystem::create_directories(temp_dir);
+  }
+
+  void TearDown() override {
+    if (std::filesystem::exists(temp_dir)) {
+      std::filesystem::remove_all(temp_dir);
+    }
   }
 
   void SetShaderLump(BSP& bsp, const std::vector<dshader_t>& shaders) {
@@ -71,14 +85,42 @@ TEST_F(BspMaterialTest, BuildBSPMaterialsDefaultWhenMissing) {
 
   std::unordered_map<Q3ShaderName, Q3Shader> parsed;  // Empty
 
-  VirtualFilesystem vfs("dummy_mount");
+  // Point VFS to our temp dir, which is empty.
+  VirtualFilesystem vfs(temp_dir);
+
+  auto materials = BuildBSPMaterials(bsp, parsed, vfs);
+
+  // Since "textures/common/unknown" + extensions does not exist in temp_dir,
+  // it should be skipped.
+  ASSERT_EQ(materials.size(), 0);
+}
+
+TEST_F(BspMaterialTest, BuildBSPMaterialsFindsTextureOnDisk) {
+  BSP bsp;
+  dshader_t ds1;
+  std::memset(&ds1, 0, sizeof(ds1));
+  std::strcpy(ds1.shader, "textures/common/concrete");
+  ds1.surface_flags = 1;
+  SetShaderLump(bsp, {ds1});
+
+  std::unordered_map<Q3ShaderName, Q3Shader> parsed;  // Empty
+
+  // Create the texture file in the VFS
+  std::filesystem::path texture_dir = temp_dir / "textures/common";
+  std::filesystem::create_directories(texture_dir);
+  // Create .jpg
+  std::ofstream(texture_dir / "concrete.jpg").put('\0');
+
+  VirtualFilesystem vfs(temp_dir);
   auto materials = BuildBSPMaterials(bsp, parsed, vfs);
 
   ASSERT_EQ(materials.size(), 1);
   const auto& mat = materials[0];
-  EXPECT_EQ(mat.name, "textures/common/unknown");
+  EXPECT_EQ(mat.name, "textures/common/concrete");
+  // Default shader parsed from disk should have the texture layer
+  ASSERT_EQ(mat.texture_layers.size(), 1);
+  EXPECT_EQ(mat.texture_layers[0], "textures/common/concrete.jpg");
   EXPECT_EQ(mat.surface_flags, 1);
-  EXPECT_FLOAT_EQ(mat.q3map_surfacelight, 0.0f);  // Default
 }
 
 }  // namespace
