@@ -3,81 +3,119 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <utility>
-#include <variant>
-
-#include "bsp.h"
 #include "bsp_geometry.h"
 
 namespace ioq3_map {
 namespace {
 
-using ::testing::FloatNear;
-using ::testing::SizeIs;
+using ::testing::Pointwise;
 
-TEST(SceneTest, AssembleBSPObjectsPlanarTransform) {
-  BSP bsp;
-  // We need LumpType::Textures for material resolution, but empty is fine for
-  // default
-
-  std::unordered_map<BSPSurfaceIndex, BSPGeometry> bsp_geometries;
-
-  BSPGeometry geo;
-  geo.texture_index = 0;
-
-  BSPPolygon poly;
-  // Q3 Point (100, 200, 300) -> glTF (100 * scale, 300 * scale, -200 * scale)
-  // Scale = 0.0254
-  // X: 100 * 0.0254 = 2.54
-  // Y: 300 * 0.0254 = 7.62
-  // Z: -200 * 0.0254 = -5.08
-  vertex_t v0;
-  v0.xyz[0] = 100.0f;
-  v0.xyz[1] = 200.0f;
-  v0.xyz[2] = 300.0f;
-  v0.normal[0] = 0;
-  v0.normal[1] = 1;
-  v0.normal[2] = 0;  // Up in Q3 (Y)
-
-  poly.vertices.push_back(v0);
-  poly.indices.push_back(0);
-
-  geo.primitive = std::move(poly);
-  bsp_geometries.emplace(0, std::move(geo));
-
-  Scene scene = AssembleBSPObjects(bsp, bsp_geometries);
-
-  ASSERT_THAT(scene.geometries, SizeIs(1));
-  const auto& out_geo = scene.geometries[0];
-
-  ASSERT_THAT(out_geo.vertices, SizeIs(1));
-  const auto& p = out_geo.vertices[0];
-
-  EXPECT_THAT(p.x(), FloatNear(2.54f, 0.0001f));
-  EXPECT_THAT(p.y(), FloatNear(7.62f, 0.0001f));   // Z maps to Y
-  EXPECT_THAT(p.z(), FloatNear(-5.08f, 0.0001f));  // Y maps to -Z
-
-  // Normal Transform: (0, 1, 0) -> (0, 0, -1)
-  const auto& n = out_geo.normals[0];
-  EXPECT_THAT(n.x(), FloatNear(0.0f, 0.0001f));
-  EXPECT_THAT(n.y(), FloatNear(0.0f, 0.0001f));
-  EXPECT_THAT(n.z(), FloatNear(-1.0f, 0.0001f));
+// Helper to match vectors with tolerance
+MATCHER_P(VectorNear, tol, "") {
+  return (std::get<0>(arg) - std::get<1>(arg)).norm() < tol;
 }
 
-TEST(SceneTest, AssembleBSPObjectsIgnoredPatch) {
-  BSP bsp;
-  std::unordered_map<BSPSurfaceIndex, BSPGeometry> bsp_geometries;
+class SceneTest : public ::testing::Test {
+ protected:
+  BSP bsp_;
+  std::unordered_map<BSPSurfaceIndex, BSPGeometry> geometries_;
+  std::unordered_map<BSPTextureIndex, BSPMaterial> materials_;
+};
 
+TEST_F(SceneTest, AssembleBSPObjectsPlanarTransform) {
+  // Setup a simple Polygon
+  // Q3 Coords: triangle at Z=0
+  // v0=(0,0,0), v1=(100,0,0), v2=(0,100,0) normal=(0,0,1)
   BSPGeometry geo;
   geo.texture_index = 0;
-  geo.primitive = BSPPatch{};  // Empty patch
+  BSPPolygon poly;
+  vertex_t v0;
+  v0.xyz = {0, 0, 0};
+  v0.normal = {0, 0, 1};
+  vertex_t v1;
+  v1.xyz = {100, 0, 0};
+  v1.normal = {0, 0, 1};
+  vertex_t v2;
+  v2.xyz = {0, 100, 0};
+  v2.normal = {0, 0, 1};
+  poly.vertices = {v0, v1, v2};
+  poly.indices = {0, 1, 2};
+  geo.primitive = poly;
+  geometries_[0] = geo;
 
-  bsp_geometries.emplace(0, std::move(geo));
+  // Setup Material
+  BSPMaterial mat;
+  mat.name = "textures/base_wall/concrete";
+  materials_[0] = mat;
 
-  Scene scene = AssembleBSPObjects(bsp, bsp_geometries);
-  // Patch is processed, but empty because dimensions are invalid/zero.
-  ASSERT_THAT(scene.geometries, SizeIs(1));
-  EXPECT_THAT(scene.geometries[0].vertices, SizeIs(0));
+  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_);
+
+  ASSERT_EQ(scene.geometries.size(), 1);
+  const auto& out_geo = scene.geometries.at(0);
+
+  // Verify transform: x'=x, y'=z, z'=-y
+  // v0': (0, 0, 0)
+  // v1': (100*scale, 0, 0) -> (2.54, 0, 0)
+  // v2': (0, 0, -100*scale) -> (0, 0, -2.54)
+  // normal': (0, 1, 0)
+
+  constexpr float kScale = 0.0254f;
+  EXPECT_NEAR(out_geo.vertices[0].x(), 0.0f, 1e-5f);
+  EXPECT_NEAR(out_geo.vertices[0].y(), 0.0f, 1e-5f);
+  EXPECT_NEAR(out_geo.vertices[0].z(), 0.0f, 1e-5f);
+
+  EXPECT_NEAR(out_geo.vertices[1].x(), 100 * kScale, 1e-5f);
+  EXPECT_NEAR(out_geo.vertices[1].y(), 0.0f, 1e-5f);
+  EXPECT_NEAR(out_geo.vertices[1].z(), 0.0f, 1e-5f);
+
+  EXPECT_NEAR(out_geo.vertices[2].x(), 0.0f, 1e-5f);
+  EXPECT_NEAR(out_geo.vertices[2].y(), 0.0f, 1e-5f);
+  EXPECT_NEAR(out_geo.vertices[2].z(), -100 * kScale, 1e-5f);  // z' = -y
+
+  // Normal (0,0,1) -> (0,1,0)
+  EXPECT_NEAR(out_geo.normals[0].x(), 0.0f, 1e-5f);
+  EXPECT_NEAR(out_geo.normals[0].y(), 1.0f, 1e-5f);
+  EXPECT_NEAR(out_geo.normals[0].z(), 0.0f, 1e-5f);
+
+  // Material Check
+  ASSERT_EQ(scene.materials.size(), 1);
+  EXPECT_EQ(scene.materials.at(0).name, "textures/base_wall/concrete");
+  EXPECT_EQ(out_geo.material_id, 0);
+}
+
+TEST_F(SceneTest, AssembleBSPObjectsExtractsSun) {
+  BSPMaterial mat;
+  mat.name = "textures/skies/sky_sun";
+  mat.q3map_sun_intensity = 100.0f;
+  mat.q3map_sun_color = Eigen::Vector3f(1.0f, 1.0f, 1.0f);
+  mat.q3map_sun_direction = Eigen::Vector2f(90.0f, 45.0f);  // North, 45deg up
+  materials_[0] = mat;
+
+  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_);
+
+  bool found_sun = false;
+  for (const auto& l : scene.lights) {
+    if (l.type == Light::Type::Directional) {
+      found_sun = true;
+      EXPECT_FLOAT_EQ(l.intensity, 100.0f);
+      // Verify direction
+      // Yaw 90 (North), El 45
+      // Q3: x=0, y=r, z=sin(45)
+      // r = cos(45) = 0.707
+      // y = 0.707 * sin(90) = 0.707
+      // z = 0.707
+      // Q3 Sun Pos: (0, 0.707, 0.707)
+      // Q3 Light Dir: (0, -0.707, -0.707)
+      // Transform (Rot -90 X):
+      // x'=x=0
+      // y'=z=-0.707
+      // z'=-y=0.707
+      EXPECT_NEAR(l.direction.x(), 0.0f, 1e-3f);
+      EXPECT_NEAR(l.direction.y(), -0.707f, 1e-3f);
+      EXPECT_NEAR(l.direction.z(), 0.707f, 1e-3f);
+    }
+  }
+  EXPECT_TRUE(found_sun);
 }
 
 }  // namespace

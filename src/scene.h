@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "bsp_geometry.h"
+#include "bsp_material.h"
 
 namespace ioq3_map {
 
@@ -77,7 +78,8 @@ struct Scene {
 
 Scene AssembleBSPObjects(
     const BSP& bsp,
-    const std::unordered_map<BSPSurfaceIndex, BSPGeometry>& bsp_geometries);
+    const std::unordered_map<BSPSurfaceIndex, BSPGeometry>& bsp_geometries,
+    const std::unordered_map<BSPTextureIndex, BSPMaterial>& bsp_materials);
 
 }  // namespace ioq3_map
 

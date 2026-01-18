@@ -7,6 +7,8 @@
 #include <string_view>
 #include <unordered_map>
 
+#include "glog/logging.h"
+
 namespace ioq3_map {
 
 enum class LumpType {
@@ -34,7 +36,28 @@ struct BSP {
   std::unordered_map<LumpType, std::string_view> lumps;
 };
 
+// Helper to get raw pointer from string_view.
+template <typename T>
+const T* GetLumpData(const BSP& bsp, LumpType type, size_t* count) {
+  auto it = bsp.lumps.find(type);
+  if (it == bsp.lumps.end() || it->second.empty()) {
+    *count = 0;
+    return nullptr;
+  }
+  const std::string_view& lump_data = it->second;
+  if (lump_data.size() % sizeof(T) != 0) {
+    LOG(ERROR) << "Invalid lump size for " << static_cast<int>(type);
+    *count = 0;
+    return nullptr;
+  }
+  *count = lump_data.size() / sizeof(T);
+  return reinterpret_cast<const T*>(lump_data.data());
+}
+
+// Checks if the file is a valid BSP file.
 bool IsValidBsp(const std::filesystem::path& bsp_file_path);
+
+// Loads a BSP file into memory.
 std::optional<BSP> LoadBsp(const std::filesystem::path& bsp_file_path);
 
 }  // namespace ioq3_map

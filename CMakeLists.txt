@@ -50,7 +50,10 @@ add_library(ioq3_map SHARED
     src/archives.cpp
     src/bsp.cpp
     src/bsp_geometry.cpp
+    src/bsp_material.cpp
+    src/bsp_material.h
     src/scene.cpp
+    src/shader_parser.cpp
     src/triangulation.cpp
 )
 
@@ -79,10 +82,13 @@ add_executable(ioq3_map_exporter_test
     src/archives_test.cpp
     src/bsp_test.cpp
     src/bsp_geometry_test.cpp
+    src/bsp_material_test.cpp
+    src/shader_parser_test.cpp
     src/scene_test.cpp
     src/triangulation_test.cpp
 )
 target_link_libraries(ioq3_map_exporter_test PRIVATE
     ioq3_map
     GTest::gtest_main
+    GTest::gmock
 )
