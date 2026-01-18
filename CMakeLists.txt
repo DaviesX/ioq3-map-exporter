@@ -3,16 +3,16 @@ project(ioq3_map_exporter)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(ENABLE_IWYU "Enable Include What You Use" ON)
-if(ENABLE_IWYU)
-  find_program(IWYU_PATH NAMES include-what-you-use iwyu)
-  if(IWYU_PATH)
-    message(STATUS "IWYU found: ${IWYU_PATH}")
-    set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE ${IWYU_PATH})
-  else()
-    message(WARNING "include-what-you-use not found, but ENABLE_IWYU is ON")
-  endif()
-endif()
+# option(ENABLE_IWYU "Enable Include What You Use" OFF)
+# if(ENABLE_IWYU)
+#   find_program(IWYU_PATH NAMES include-what-you-use iwyu)
+#   if(IWYU_PATH)
+#     message(STATUS "IWYU found: ${IWYU_PATH}")
+#     set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE ${IWYU_PATH})
+#   else()
+#     message(WARNING "include-what-you-use not found, but ENABLE_IWYU is ON")
+#   endif()
+# endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -49,6 +49,9 @@ add_library(tinygltf INTERFACE)
 add_library(ioq3_map SHARED
     src/archives.cpp
     src/bsp.cpp
+    src/bsp_geometry.cpp
+    src/scene.cpp
+    src/triangulation.cpp
 )
 
 target_link_libraries(ioq3_map PUBLIC
@@ -75,6 +78,9 @@ enable_testing()
 add_executable(ioq3_map_exporter_test
     src/archives_test.cpp
     src/bsp_test.cpp
+    src/bsp_geometry_test.cpp
+    src/scene_test.cpp
+    src/triangulation_test.cpp
 )
 target_link_libraries(ioq3_map_exporter_test PRIVATE
     ioq3_map

@@ -4,12 +4,13 @@
 #include <filesystem>
 #include <iostream>
 #include <optional>
-#include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "archives.h"
 #include "bsp.h"
+#include "bsp_geometry.h"
+#include "scene.h"
 
 DEFINE_string(base_path, "", "Path to Quake 3 .pk3 archives");
 DEFINE_string(map, "", "Map name (e.g., q3dm1)");
@@ -48,20 +49,7 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "Mounted VFS at: " << vfs->mount_point;
 
   // 3. Locate Map
-  // assumption: --map "q3dm1" implies "maps/q3dm1.bsp"
-  std::string map_name = FLAGS_map;
-  if (map_name.find(".bsp") == std::string::npos) {
-    map_name += ".bsp";
-  }
-
-  // Check if user provided "maps/" prefix
-  std::filesystem::path map_path;
-  if (map_name.find("maps/") == 0 || map_name.find("maps\\") == 0) {
-    map_path = vfs->mount_point / map_name;
-  } else {
-    map_path = vfs->mount_point / "maps" / map_name;
-  }
-
+  std::filesystem::path map_path = vfs->mount_point / FLAGS_map;
   if (!std::filesystem::exists(map_path)) {
     LOG(ERROR) << "Map file not found in VFS: " << map_path;
     return 1;
@@ -77,6 +65,17 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "Successfully loaded BSP header. Lumps found: "
             << bsp->lumps.size();
 
-  LOG(INFO) << "Phase 1 Complete. Exiting.";
+  // 5. Build Geometry
+  LOG(INFO) << "Building BSP Geometry...";
+  auto bsp_geometries = ioq3_map::BuildBSPGeometries(*bsp);
+  LOG(INFO) << "Parsed " << bsp_geometries.size() << " BSP surfaces.";
+
+  // 6. Assemble Scene
+  LOG(INFO) << "Assembling Scene...";
+  auto scene = ioq3_map::AssembleBSPObjects(*bsp, bsp_geometries);
+  LOG(INFO) << "Scene Assembled. Total Geometries: " << scene.geometries.size();
+  LOG(INFO) << "Total Materials: " << scene.materials.size();
+
+  LOG(INFO) << "Phase 2 Complete. Exiting.";
   return 0;
 }
