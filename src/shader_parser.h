@@ -40,6 +40,12 @@ std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScripts(
     const VirtualFilesystem& vfs,
     const std::vector<std::filesystem::path>& shader_script_paths);
 
+// A default shader contains only the one albedo texture layer. The shader name
+// is the extensionless path to the texture in the VFS. If the texture is not
+// found, return std::nullopt.
+std::optional<Q3Shader> CreateDefaultShader(const Q3ShaderName& name,
+                                            const VirtualFilesystem& vfs);
+
 }  // namespace ioq3_map
 
 #endif  // IOQ3_MAP_EXPORTER_SHADER_PARSER_H_

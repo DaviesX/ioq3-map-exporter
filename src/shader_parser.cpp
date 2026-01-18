@@ -267,4 +267,35 @@ std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScripts(
   return parsed_shaders;
 }
 
+// A default shader contains only the one albedo texture layer. The shader name
+// is the extensionless path to the texture in the VFS. If the texture is not
+// found, return std::nullopt.
+std::optional<Q3Shader> CreateDefaultShader(const Q3ShaderName& name,
+                                            const VirtualFilesystem& vfs) {
+  // Common texture extensions in Q3
+  static const std::vector<std::string> extensions = {".tga", ".jpg", ".png",
+                                                      ".jpeg"};
+
+  for (const auto& ext : extensions) {
+    std::string filename = name + ext;
+    std::filesystem::path full_path = vfs.mount_point / filename;
+
+    // We use std::filesystem::exists to check.
+    // Ensure we handle case sensitivity if possible, but IOQ3 is mixed.
+    // For now, rely on FS or assuming lower case matching (Q3 is usually case
+    // insensitive). The VFS/Filesystem on Linux is case sensitive, which might
+    // be a problem if the PK3 was authored on Windows.
+    // Ideally we would search, but for Phase 1/2 we'll assume correct casing or
+    // simple existence.
+    if (std::filesystem::exists(full_path)) {
+      Q3Shader shader;
+      shader.name = name;
+      shader.texture_layers.push_back(filename);
+      return shader;
+    }
+  }
+
+  return std::nullopt;
+}
+
 }  // namespace ioq3_map

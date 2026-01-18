@@ -9,7 +9,8 @@ namespace ioq3_map {
 
 std::unordered_map<BSPTextureIndex, BSPMaterial> BuildBSPMaterials(
     const BSP& bsp,
-    const std::unordered_map<Q3ShaderName, Q3Shader>& parsed_shaders) {
+    const std::unordered_map<Q3ShaderName, Q3Shader>& parsed_shaders,
+    const VirtualFilesystem& vfs) {
   std::unordered_map<BSPTextureIndex, BSPMaterial> materials;
 
   size_t num_shaders = 0;
@@ -38,7 +39,14 @@ std::unordered_map<BSPTextureIndex, BSPMaterial> BuildBSPMaterials(
       material = it->second;
     } else {
       // Not found, use default properties from Lump 1
-      material.name = texture_name;
+      auto default_shader = CreateDefaultShader(texture_name, vfs);
+      if (!default_shader) {
+        LOG(WARNING)
+            << "Unable to create default shader for " << texture_name
+            << " and no associated shader definition was found. Skipping.";
+        continue;
+      }
+      material = *default_shader;
     }
 
     // Always mix in flags from Lump 1 as they define the map-specific

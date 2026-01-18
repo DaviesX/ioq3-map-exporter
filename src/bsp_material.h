@@ -30,7 +30,8 @@ using BSPTextureIndex = int;
 // (sun/emission).
 std::unordered_map<BSPTextureIndex, BSPMaterial> BuildBSPMaterials(
     const BSP& bsp,
-    const std::unordered_map<Q3ShaderName, Q3Shader>& parsed_shaders);
+    const std::unordered_map<Q3ShaderName, Q3Shader>& parsed_shaders,
+    const VirtualFilesystem& vfs);
 
 }  // namespace ioq3_map
 

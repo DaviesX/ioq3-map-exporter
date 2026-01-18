@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <filesystem>
 #include <vector>
 
 #include "bsp.h"
@@ -49,7 +50,8 @@ TEST_F(BspMaterialTest, BuildBSPMaterialsMatchesParsed) {
   q3s.q3map_surfacelight = 100.0f;
   parsed[q3s.name] = q3s;
 
-  auto materials = BuildBSPMaterials(bsp, parsed);
+  VirtualFilesystem vfs("dummy_mount");
+  auto materials = BuildBSPMaterials(bsp, parsed, vfs);
 
   ASSERT_EQ(materials.size(), 1);
   const auto& mat = materials[0];
@@ -69,7 +71,8 @@ TEST_F(BspMaterialTest, BuildBSPMaterialsDefaultWhenMissing) {
 
   std::unordered_map<Q3ShaderName, Q3Shader> parsed;  // Empty
 
-  auto materials = BuildBSPMaterials(bsp, parsed);
+  VirtualFilesystem vfs("dummy_mount");
+  auto materials = BuildBSPMaterials(bsp, parsed, vfs);
 
   ASSERT_EQ(materials.size(), 1);
   const auto& mat = materials[0];
