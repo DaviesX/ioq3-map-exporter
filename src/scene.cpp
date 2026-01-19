@@ -48,9 +48,11 @@ void ToGeometry(const BSPMesh& mesh, Geometry* out_geometry) {
     out_geometry->lightmap_uvs.push_back(TransformUV(v.lightmap));
   }
 
+  // This is because Quake3 uses a clockwise winding order whereas OpenGL
+  // uses counter-clockwise. So we insert indices in reverse order.
   out_geometry->indices.reserve(mesh.indices.size());
-  for (int idx : mesh.indices) {
-    out_geometry->indices.push_back(static_cast<uint32_t>(idx));
+  for (int i = int(mesh.indices.size()) - 1; i >= 0; --i) {
+    out_geometry->indices.push_back(static_cast<uint32_t>(mesh.indices[i]));
   }
 }
 

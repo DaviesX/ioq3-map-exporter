@@ -9,7 +9,7 @@ namespace ioq3_map {
 BSPMesh Triangulate(const BSPPolygon& polygon);
 
 // Triangulates a quadratic Bezier patch into a grid mesh.
-BSPMesh Triangulate(const BSPPatch& patch, int subdivisions = 10);
+BSPMesh Triangulate(const BSPPatch& patch, int subdivisions = 7);
 
 }  // namespace ioq3_map
 

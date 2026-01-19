@@ -145,15 +145,16 @@ BSPMesh Triangulate(const BSPPatch& patch, int subdivisions) {
       int v2 = (y + 1) * grid_width + (x + 1);
       int v3 = (y + 1) * grid_width + x;
 
-      // Triangle 1: v0, v1, v2
+      // To keep counter-clockwise ordering within Q3 structures.
+      // Triangle 1: v0, v2, v1
       mesh.indices.push_back(v0);
+      mesh.indices.push_back(v2);
       mesh.indices.push_back(v1);
-      mesh.indices.push_back(v2);
 
-      // Triangle 2: v0, v2, v3
+      // Triangle 2: v0, v3, v2
       mesh.indices.push_back(v0);
-      mesh.indices.push_back(v2);
       mesh.indices.push_back(v3);
+      mesh.indices.push_back(v2);
     }
   }
 
