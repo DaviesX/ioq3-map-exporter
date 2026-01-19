@@ -8,8 +8,6 @@
 namespace ioq3_map {
 namespace {
 
-using ::testing::Pointwise;
-
 // Helper to match vectors with tolerance
 MATCHER_P(VectorNear, tol, "") {
   return (std::get<0>(arg) - std::get<1>(arg)).norm() < tol;

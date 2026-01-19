@@ -13,8 +13,21 @@ namespace ioq3_map {
 
 using Q3ShaderName = std::string;
 
+struct Q3TextureLayer {
+  std::filesystem::path path;
+
+  // TODO: Add blending mode, etc.
+
+  bool operator==(const Q3TextureLayer& other) const {
+    return path == other.path;
+  }
+};
+
 struct Q3Shader {
+  // Original name specified in the shader script.
   Q3ShaderName name;
+
+  // Q3 flags
   int surface_flags = 0;
   int content_flags = 0;
 
@@ -29,11 +42,17 @@ struct Q3Shader {
   std::string q3map_lightimage;
 
   // Texture layers
-  std::vector<std::string> texture_layers;
+  std::vector<Q3TextureLayer> texture_layers;
 };
 
-// Lists all *.shader files within the /scripts folder in the VFS.
-std::vector<std::filesystem::path> ListQ3Shader(const VirtualFilesystem& vfs);
+// Lists all *.shader files within the /scripts folder in the VFS. It returns
+// the OS paths for every shader file found.
+std::vector<std::filesystem::path> ListQ3ShaderScripts(
+    const VirtualFilesystem& vfs);
+
+// Parses the content of a shader script from a full OS path.
+std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScript(
+    const std::filesystem::path& shader_script_path);
 
 // Parses the content of shader scripts.
 std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScripts(

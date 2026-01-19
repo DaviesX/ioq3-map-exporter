@@ -6,7 +6,9 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <sstream>
+#include <string>
 
 // Basic surface flags from surfaceflags.h
 #define SURF_NODAMAGE 0x1
@@ -30,8 +32,10 @@
 #define SURF_DUST 0x40000
 
 namespace ioq3_map {
-
 namespace {
+
+const char* kScriptFolder = "scripts";
+const char* kShaderExtension = ".shader";
 
 // Tokenizer helper
 class Tokenizer {
@@ -137,134 +141,166 @@ int GetSurfaceParmFlag(const std::string& parm) {
   return 0;
 }
 
-}  // namespace
+void ParseShaderParameter(const std::string& keyword, Tokenizer* tokenizer,
+                          Q3Shader* shader) {
+  std::string lower_keyword = keyword;
+  std::transform(lower_keyword.begin(), lower_keyword.end(),
+                 lower_keyword.begin(), ::tolower);
 
-std::vector<std::filesystem::path> ListQ3Shader(const VirtualFilesystem& vfs) {
-  std::vector<std::filesystem::path> shader_files;
+  if (lower_keyword == "surfaceparm") {
+    std::string param = tokenizer->Next();
+    shader->surface_flags |= GetSurfaceParmFlag(param);
+  } else if (lower_keyword == "q3map_sun") {
+    float r = std::stof(tokenizer->Next());
+    float g = std::stof(tokenizer->Next());
+    float b = std::stof(tokenizer->Next());
+    shader->q3map_sun_color = Eigen::Vector3f(r, g, b);
 
-  if (!std::filesystem::exists(vfs.mount_point)) {
-    return shader_files;
+    shader->q3map_sun_intensity = std::stof(tokenizer->Next());
+    float degrees = std::stof(tokenizer->Next());
+    float elevation = std::stof(tokenizer->Next());
+    shader->q3map_sun_direction = Eigen::Vector2f(degrees, elevation);
+  } else if (lower_keyword == "q3map_surfacelight") {
+    shader->q3map_surfacelight = std::stof(tokenizer->Next());
+  } else if (lower_keyword == "q3map_lightimage") {
+    shader->q3map_lightimage = tokenizer->Next();
+  } else if (lower_keyword == "q3map_sunlight") {
+    // ignore
+  } else if (lower_keyword == "q3map_sunmangle") {
+    // ignore
+    tokenizer->Next();
+    tokenizer->Next();
+    tokenizer->Next();
   }
+}
 
-  for (const auto& entry :
-       std::filesystem::recursive_directory_iterator(vfs.mount_point)) {
-    if (entry.is_regular_file() && entry.path().extension() == ".shader") {
-      // Check if it is in a "scripts" directory
-      // The relative path from mount point should contain "scripts"
-      auto relative_path =
-          std::filesystem::relative(entry.path(), vfs.mount_point);
-      std::string path_str = relative_path.string();
-      // Simple check: start with scripts/ or contains /scripts/
-      if (path_str.rfind("scripts/", 0) == 0 ||
-          path_str.find("/scripts/") != std::string::npos) {
-        shader_files.push_back(relative_path);
+std::vector<Q3TextureLayer> ParseShaderStages(Tokenizer* tokenizer) {
+  std::vector<Q3TextureLayer> result;
+
+  // Inner block (stage/pass)
+  while (tokenizer->HasMore()) {
+    std::string inner = tokenizer->Next();
+    if (inner == "}") break;
+    if (inner == "{") {
+      int depth = 1;
+      while (depth > 0 && tokenizer->HasMore()) {
+        std::string d = tokenizer->Next();
+        if (d == "{")
+          depth++;
+        else if (d == "}")
+          depth--;
       }
     }
+
+    std::string lower_inner = inner;
+    std::transform(lower_inner.begin(), lower_inner.end(), lower_inner.begin(),
+                   ::tolower);
+    if (lower_inner == "map") {
+      std::string texture_path = tokenizer->Next();
+      if (texture_path == "$lightmap" || texture_path == "$whiteimage") {
+        // We won't need to export lightmap or whiteimage.
+        continue;
+      }
+      result.push_back(Q3TextureLayer{.path = texture_path});
+    }
   }
-  std::sort(shader_files.begin(), shader_files.end());
-  return shader_files;
+
+  return result;
+}
+
+}  // namespace
+
+std::vector<std::filesystem::path> ListQ3ShaderScripts(
+    const VirtualFilesystem& vfs) {
+  std::filesystem::recursive_directory_iterator dir_it;
+  try {
+    dir_it = std::filesystem::recursive_directory_iterator(vfs.mount_point /
+                                                           kScriptFolder);
+  } catch (const std::filesystem::filesystem_error& e) {
+    LOG(ERROR) << "Failed to list shader scripts: " << e.what();
+    return {};
+  }
+
+  std::vector<std::filesystem::path> result;
+  for (const auto& entry : dir_it) {
+    if (entry.is_regular_file() &&
+        entry.path().extension() == kShaderExtension) {
+      result.push_back(entry.path());
+    }
+  }
+  std::sort(result.begin(), result.end());
+  return result;
+}
+
+std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScript(
+    const std::filesystem::path& shader_script_path) {
+  std::ifstream file(shader_script_path);
+  if (!file.is_open()) {
+    LOG(ERROR) << "Failed to open shader file: " << shader_script_path;
+    return {};
+  }
+
+  std::stringstream buffer;
+  buffer << file.rdbuf();
+  std::string content = buffer.str();
+
+  std::unordered_map<Q3ShaderName, Q3Shader> result;
+
+  Tokenizer tokenizer(content);
+  while (tokenizer.HasMore()) {
+    // The first line should be the shader name.
+    std::string shader_name = tokenizer.Next();
+    if (shader_name.empty() || shader_name == "}") {
+      continue;  // Skip stray tokens or end of file
+    }
+
+    Q3Shader shader;
+    shader.name = shader_name;
+
+    // The next line should be an open brace containing shader parameters and
+    // inner stages.
+    std::string open_brace = tokenizer.Next();
+    if (open_brace != "{") {
+      LOG(WARNING) << "Expected '{' after shader name " << shader.name;
+      continue;
+    }
+
+    while (tokenizer.HasMore()) {
+      std::string token = tokenizer.Next();
+      if (token == "}") {
+        // End of shader.
+        break;
+      }
+
+      if (token == "{") {
+        // Inner block (stage/pass).
+        shader.texture_layers = ParseShaderStages(&tokenizer);
+      } else {
+        // Shader parameter.
+        ParseShaderParameter(token, &tokenizer, &shader);
+      }
+    }
+
+    result.emplace(shader.name, std::move(shader));
+  }
+
+  return result;
 }
 
 std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScripts(
     const VirtualFilesystem& vfs,
     const std::vector<std::filesystem::path>& shader_script_paths) {
-  std::unordered_map<Q3ShaderName, Q3Shader> parsed_shaders;
+  std::unordered_map<Q3ShaderName, Q3Shader> result;
 
-  for (const auto& relative_path : shader_script_paths) {
-    std::filesystem::path full_path = vfs.mount_point / relative_path;
-    std::ifstream file(full_path);
-    if (!file.is_open()) {
-      LOG(WARNING) << "Failed to open shader file: " << full_path;
-      continue;
-    }
+  for (const auto& path : shader_script_paths) {
+    auto parsed_shaders = ParseShaderScript(path);
 
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string content = buffer.str();
-
-    Tokenizer tokenizer(content);
-    while (tokenizer.HasMore()) {
-      std::string token = tokenizer.Next();
-      if (token.empty() || token == "}")
-        continue;  // Skip stray tokens or end of file
-
-      Q3Shader shader;
-      shader.name = token;
-
-      std::string open_brace = tokenizer.Next();
-      if (open_brace != "{") {
-        LOG(WARNING) << "Expected '{' after shader name " << shader.name;
-        continue;
-      }
-
-      while (tokenizer.HasMore()) {
-        std::string keyword = tokenizer.Next();
-        if (keyword == "}") break;
-        if (keyword == "{") {
-          // Inner block (stage/pass)
-          while (tokenizer.HasMore()) {
-            std::string inner = tokenizer.Next();
-            if (inner == "}") break;
-            if (inner == "{") {
-              int depth = 1;
-              while (depth > 0 && tokenizer.HasMore()) {
-                std::string d = tokenizer.Next();
-                if (d == "{")
-                  depth++;
-                else if (d == "}")
-                  depth--;
-              }
-            }
-            std::string lower_inner = inner;
-            std::transform(lower_inner.begin(), lower_inner.end(),
-                           lower_inner.begin(), ::tolower);
-            if (lower_inner == "map") {
-              std::string texture_path = tokenizer.Next();
-              if (texture_path != "$lightmap" &&
-                  texture_path != "$whiteimage") {
-                shader.texture_layers.push_back(texture_path);
-              }
-            }
-          }
-          continue;
-        }
-
-        std::string lower_keyword = keyword;
-        std::transform(lower_keyword.begin(), lower_keyword.end(),
-                       lower_keyword.begin(), ::tolower);
-
-        if (lower_keyword == "surfaceparm") {
-          std::string param = tokenizer.Next();
-          shader.surface_flags |= GetSurfaceParmFlag(param);
-        } else if (lower_keyword == "q3map_sun") {
-          float r = std::stof(tokenizer.Next());
-          float g = std::stof(tokenizer.Next());
-          float b = std::stof(tokenizer.Next());
-          shader.q3map_sun_color = Eigen::Vector3f(r, g, b);
-
-          shader.q3map_sun_intensity = std::stof(tokenizer.Next());
-          float degrees = std::stof(tokenizer.Next());
-          float elevation = std::stof(tokenizer.Next());
-          shader.q3map_sun_direction = Eigen::Vector2f(degrees, elevation);
-        } else if (lower_keyword == "q3map_surfacelight") {
-          shader.q3map_surfacelight = std::stof(tokenizer.Next());
-        } else if (lower_keyword == "q3map_lightimage") {
-          shader.q3map_lightimage = tokenizer.Next();
-        } else if (lower_keyword == "q3map_sunlight") {
-          // ignore
-        } else if (lower_keyword == "q3map_sunmangle") {
-          // ignore
-          tokenizer.Next();
-          tokenizer.Next();
-          tokenizer.Next();
-        }
-      }
-
-      parsed_shaders[shader.name] = shader;
+    for (auto& [name, shader] : parsed_shaders) {
+      result.emplace(name, std::move(shader));
     }
   }
 
-  return parsed_shaders;
+  return result;
 }
 
 // A default shader contains only the one albedo texture layer. The shader name
@@ -287,12 +323,14 @@ std::optional<Q3Shader> CreateDefaultShader(const Q3ShaderName& name,
     // be a problem if the PK3 was authored on Windows.
     // Ideally we would search, but for Phase 1/2 we'll assume correct casing or
     // simple existence.
-    if (std::filesystem::exists(full_path)) {
-      Q3Shader shader;
-      shader.name = name;
-      shader.texture_layers.push_back(filename);
-      return shader;
+    if (!std::filesystem::exists(full_path)) {
+      continue;
     }
+
+    Q3Shader shader;
+    shader.name = name;
+    shader.texture_layers.push_back(Q3TextureLayer{.path = filename});
+    return shader;
   }
 
   return std::nullopt;

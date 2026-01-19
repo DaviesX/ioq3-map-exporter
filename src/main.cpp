@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
 
   // 5. Shader Extraction
   LOG(INFO) << "Extracting Shaders...";
-  auto shader_files = ioq3_map::ListQ3Shader(*vfs);
+  auto shader_files = ioq3_map::ListQ3ShaderScripts(*vfs);
   LOG(INFO) << "Found " << shader_files.size() << " shader scripts.";
   auto parsed_shaders = ioq3_map::ParseShaderScripts(*vfs, shader_files);
   LOG(INFO) << "Parsed " << parsed_shaders.size() << " shaders.";

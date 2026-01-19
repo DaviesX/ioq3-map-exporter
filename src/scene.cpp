@@ -69,7 +69,7 @@ Scene AssembleBSPObjects(
 
     // Albedo
     if (!bsp_mat.texture_layers.empty()) {
-      mat.albedo.file_path = bsp_mat.texture_layers[0];
+      mat.albedo.file_path = bsp_mat.texture_layers[0].path;
     } else {
       mat.albedo.file_path = bsp_mat.name;
     }

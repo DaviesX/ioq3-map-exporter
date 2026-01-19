@@ -47,10 +47,9 @@ TEST_F(ShaderParserTest, ListQ3ShaderFindsFiles) {
   CreateShaderFile("test2.shader", "");
   CreateShaderFile("ignore.txt", "");
 
-  auto files = ListQ3Shader(*vfs_);
-  EXPECT_THAT(files, UnorderedElementsAre(
-                         std::filesystem::path("scripts/test1.shader"),
-                         std::filesystem::path("scripts/test2.shader")));
+  auto files = ListQ3ShaderScripts(*vfs_);
+  EXPECT_THAT(files, UnorderedElementsAre(scripts_dir_ / "test1.shader",
+                                          scripts_dir_ / "test2.shader"));
 }
 
 TEST_F(ShaderParserTest, ParseShaderSimple) {
@@ -66,7 +65,7 @@ textures/common/simple
 }
 )");
 
-  auto files = ListQ3Shader(*vfs_);
+  auto files = ListQ3ShaderScripts(*vfs_);
   auto shaders = ParseShaderScripts(*vfs_, files);
 
   ASSERT_EQ(shaders.size(), 1);
@@ -74,7 +73,8 @@ textures/common/simple
   EXPECT_EQ(shader.name, "textures/common/simple");
   EXPECT_FLOAT_EQ(shader.q3map_surfacelight, 100.0f);
   EXPECT_EQ(shader.q3map_lightimage, "textures/common/glow.tga");
-  EXPECT_THAT(shader.texture_layers, ElementsAre("textures/common/base.tga"));
+  EXPECT_THAT(shader.texture_layers,
+              ElementsAre(Q3TextureLayer{.path = "textures/common/base.tga"}));
 }
 
 TEST_F(ShaderParserTest, ParseShaderSun) {
@@ -86,7 +86,7 @@ textures/skies/sun_sky
 }
 )");
 
-  auto files = ListQ3Shader(*vfs_);
+  auto files = ListQ3ShaderScripts(*vfs_);
   auto shaders = ParseShaderScripts(*vfs_, files);
 
   ASSERT_EQ(shaders.size(), 1);
@@ -112,7 +112,7 @@ textures/s2
 }
 )");
 
-  auto files = ListQ3Shader(*vfs_);
+  auto files = ListQ3ShaderScripts(*vfs_);
   auto shaders = ParseShaderScripts(*vfs_, files);
 
   ASSERT_EQ(shaders.size(), 2);
