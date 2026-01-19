@@ -83,7 +83,8 @@ textures/common/simple
   EXPECT_FLOAT_EQ(shader.q3map_surfacelight, 100.0f);
   EXPECT_EQ(shader.q3map_lightimage, "textures/common/glow.tga");
   EXPECT_THAT(shader.texture_layers,
-              ElementsAre(Q3TextureLayer{.path = "textures/common/base.tga"}));
+              ElementsAre(Q3TextureLayer{
+                  .path = "/tmp/shader_parser_test/textures/common/base.tga"}));
 }
 
 TEST_F(ShaderParserTest, ParseShaderSun) {
