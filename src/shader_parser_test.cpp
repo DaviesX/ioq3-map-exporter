@@ -37,6 +37,14 @@ class ShaderParserTest : public ::testing::Test {
     file << content;
   }
 
+  void CreateFile(const std::string& relative_path,
+                  const std::string& content) {
+    std::filesystem::path full_path = temp_dir_ / relative_path;
+    std::filesystem::create_directories(full_path.parent_path());
+    std::ofstream file(full_path);
+    file << content;
+  }
+
   std::filesystem::path temp_dir_;
   std::filesystem::path scripts_dir_;
   std::optional<VirtualFilesystem> vfs_;
@@ -53,6 +61,7 @@ TEST_F(ShaderParserTest, ListQ3ShaderFindsFiles) {
 }
 
 TEST_F(ShaderParserTest, ParseShaderSimple) {
+  CreateFile("textures/common/base.tga", "");
   CreateShaderFile("simple.shader", R"(
 textures/common/simple
 {

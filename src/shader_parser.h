@@ -52,6 +52,7 @@ std::vector<std::filesystem::path> ListQ3ShaderScripts(
 
 // Parses the content of a shader script from a full OS path.
 std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScript(
+    const VirtualFilesystem& vfs,
     const std::filesystem::path& shader_script_path);
 
 // Parses the content of shader scripts.

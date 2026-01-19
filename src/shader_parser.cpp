@@ -208,6 +208,23 @@ std::vector<Q3TextureLayer> ParseShaderStages(Tokenizer* tokenizer) {
   return result;
 }
 
+bool VerifyShader(const Q3Shader& shader, const VirtualFilesystem& vfs) {
+  for (const auto& layer : shader.texture_layers) {
+    if (layer.path.empty()) {
+      LOG(WARNING) << "Shader " << shader.name << " has empty texture path.";
+      return false;
+    }
+
+    std::filesystem::path texture_path = vfs.mount_point / layer.path;
+    if (!std::filesystem::exists(texture_path)) {
+      LOG(WARNING) << "Shader " << shader.name << " has missing texture "
+                   << texture_path;
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 std::vector<std::filesystem::path> ListQ3ShaderScripts(
@@ -233,6 +250,7 @@ std::vector<std::filesystem::path> ListQ3ShaderScripts(
 }
 
 std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScript(
+    const VirtualFilesystem& vfs,
     const std::filesystem::path& shader_script_path) {
   std::ifstream file(shader_script_path);
   if (!file.is_open()) {
@@ -281,6 +299,11 @@ std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScript(
       }
     }
 
+    if (!VerifyShader(shader, vfs)) {
+      LOG(WARNING) << "Invalid shader " << shader.name;
+      continue;
+    }
+
     result.emplace(shader.name, std::move(shader));
   }
 
@@ -293,7 +316,7 @@ std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScripts(
   std::unordered_map<Q3ShaderName, Q3Shader> result;
 
   for (const auto& path : shader_script_paths) {
-    auto parsed_shaders = ParseShaderScript(path);
+    auto parsed_shaders = ParseShaderScript(vfs, path);
 
     for (auto& [name, shader] : parsed_shaders) {
       result.emplace(name, std::move(shader));

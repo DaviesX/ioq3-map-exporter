@@ -3,8 +3,17 @@
 #include <glog/logging.h>
 
 #include <cstring>
+#include <string>
+#include <unordered_set>
 
 namespace ioq3_map {
+namespace {
+
+const std::unordered_set<Q3ShaderName> kShouldSkipShaders = {
+    "noshader",
+};
+
+}  // namespace
 
 std::unordered_map<BSPTextureIndex, BSPMaterial> BuildBSPMaterials(
     const BSP& bsp,
@@ -26,6 +35,10 @@ std::unordered_map<BSPTextureIndex, BSPMaterial> BuildBSPMaterials(
 
     // Ensure null termination safe read
     std::string texture_name(ds.shader, strnlen(ds.shader, kMaxQPath));
+    if (kShouldSkipShaders.count(texture_name)) {
+      // There are some system shaders that we are not interested in.
+      continue;
+    }
 
     // Q3 shader names are case-insensitive often, but the map/files are usually
     // consistent. However, the shader parser might have stored them exactly as
