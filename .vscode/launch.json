@@ -5,8 +5,15 @@
             "name": "Debug ioq3_map_exporter",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/sh_baker_test",
-            "args": [],
+            "program": "${workspaceFolder}/build/ioq3_map_exporter",
+            "args": [
+                "--base_path",
+                "${workspaceFolder}/data",
+                "--map",
+                "q3dm1",
+                "--output",
+                "${workspaceFolder}/out"
+            ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

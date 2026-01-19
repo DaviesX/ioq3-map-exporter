@@ -3,32 +3,10 @@
 #include <glog/logging.h>
 
 #include <cstring>
-#include <string_view>
 
 #include "bsp.h"
 
 namespace ioq3_map {
-namespace {
-
-// Helper to get raw pointer from string_view
-template <typename T>
-const T* GetLumpData(const BSP& bsp, LumpType type, size_t* count) {
-  auto it = bsp.lumps.find(type);
-  if (it == bsp.lumps.end() || it->second.empty()) {
-    *count = 0;
-    return nullptr;
-  }
-  const std::string_view& lump_data = it->second;
-  if (lump_data.size() % sizeof(T) != 0) {
-    LOG(ERROR) << "Invalid lump size for " << static_cast<int>(type);
-    *count = 0;
-    return nullptr;
-  }
-  *count = lump_data.size() / sizeof(T);
-  return reinterpret_cast<const T*>(lump_data.data());
-}
-
-}  // namespace
 
 std::unordered_map<BSPSurfaceIndex, BSPGeometry> BuildBSPGeometries(
     const BSP& bsp) {

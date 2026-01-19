@@ -10,7 +10,9 @@
 #include "archives.h"
 #include "bsp.h"
 #include "bsp_geometry.h"
+#include "bsp_material.h"
 #include "scene.h"
+#include "shader_parser.h"
 
 DEFINE_string(base_path, "", "Path to Quake 3 .pk3 archives");
 DEFINE_string(map, "", "Map name (e.g., q3dm1)");
@@ -66,17 +68,35 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "Successfully loaded BSP header. Lumps found: "
             << bsp->lumps.size();
 
-  // 5. Build Geometry
+  // 5. Shader Extraction
+  LOG(INFO) << "Extracting Shaders...";
+  auto shader_files = ioq3_map::ListQ3ShaderScripts(*vfs);
+  LOG(INFO) << "Found " << shader_files.size() << " shader scripts.";
+  auto parsed_shaders = ioq3_map::ParseShaderScripts(*vfs, shader_files);
+  LOG(INFO) << "Parsed " << parsed_shaders.size() << " shaders.";
+
+  // 6. Material Extraction
+  LOG(INFO) << "Building BSP Materials...";
+  auto bsp_materials = ioq3_map::BuildBSPMaterials(
+      *bsp, parsed_shaders,
+      /*create_default_shader=*/[&vfs](const std::string& shader_name) {
+        return ioq3_map::CreateDefaultShader(shader_name, *vfs);
+      });
+  LOG(INFO) << "Extracted " << bsp_materials.size() << " materials.";
+
+  // 7. Build Geometry
   LOG(INFO) << "Building BSP Geometry...";
   auto bsp_geometries = ioq3_map::BuildBSPGeometries(*bsp);
   LOG(INFO) << "Parsed " << bsp_geometries.size() << " BSP surfaces.";
 
-  // 6. Assemble Scene
+  // 8. Assemble Scene
   LOG(INFO) << "Assembling Scene...";
-  auto scene = ioq3_map::AssembleBSPObjects(*bsp, bsp_geometries);
+  auto scene =
+      ioq3_map::AssembleBSPObjects(*bsp, bsp_geometries, bsp_materials);
   LOG(INFO) << "Scene Assembled. Total Geometries: " << scene.geometries.size();
   LOG(INFO) << "Total Materials: " << scene.materials.size();
+  LOG(INFO) << "Total Lights: " << scene.lights.size();
 
-  LOG(INFO) << "Phase 2 Complete. Exiting.";
+  LOG(INFO) << "Phase 3 Complete. Exiting.";
   return 0;
 }
