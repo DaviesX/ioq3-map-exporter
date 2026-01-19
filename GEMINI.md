@@ -140,15 +140,17 @@ Read the specs in `docs/Unofficial Quake 3 Map Specs.html` carefully.
 4. **Main:** Update the main function to call BuildBSPMaterials and pass the result to AssembleBSPObjects.
 
 ## Phase 4: The glTF Writer
+We will create a ASCII glTF file as an end product in this phase.
 
-1. **Buffer Creation:** Interleave or pack vertex data into a binary blob.
+1. **Buffer Creation:** Pack vertex data into a binary blob.
 2. **Node Hierarchy:** Create a single root node "Worldspawn".
-3. **Mesh Generation:** Create one glTF `mesh` per material or one monolithic mesh with multiple `primitives`. *Recommendation: One mesh with multiple primitives is more efficient for glTF.*
-4. **Export:** Write `scene.gltf` and `scene.bin`.
+3. **Mesh Generation:** Create one glTF mesh with multiple `primitives`.
+4. **Export:** Write `scene.gltf` and copy the associated texture files to the output directory.
+5. **Main:** Update the main function to call the glTF writer.
 
 ## Phase 5: Metadata & Manifest
 
-1. **Manifest Logic:** During the `RenderBatch` creation loop, record the mapping.
+1. **Manifest Logic:** In the saver module, record the mapping.
 2. **JSON Output:**
 ```json
 {

@@ -103,34 +103,55 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
   model.asset.generator = "ioq3-map-exporter";
   model.asset.version = "2.0";
 
-  // Export Materials
-  // We need to allocate the textures a unique index as we push them into
-  // the model. This is because glTF references the textures by index in the
-  // material nodes.
+  // Texture Allocations: absolute path string -> glTF texture index
   std::unordered_map<std::string, int> texture_allocations;
+  // Material Mapping: BSPTextureIndex -> glTF Material Index
+  std::unordered_map<BSPTextureIndex, int> bsp_to_gltf_material;
 
-  for (const auto& [bsp_texture_index, mat] : scene.materials) {
+  // 1. Export Materials
+  for (const auto& [bsp_tex_idx, mat] : scene.materials) {
     tinygltf::Material gmat;
     gmat.name = mat.name;
 
-    auto texture_index = AddOrReuseTexture(
-        mat.albedo.file_path, path.parent_path(), &model, &texture_allocations);
-    if (!texture_index.has_value()) {
-      return false;
+    // Handle Albedo Texture
+    if (!mat.albedo.file_path.empty()) {
+      auto texture_index =
+          AddOrReuseTexture(mat.albedo.file_path, path.parent_path(), &model,
+                            &texture_allocations);
+      if (texture_index.has_value()) {
+        gmat.pbrMetallicRoughness.baseColorTexture.index = *texture_index;
+      }
     }
-    gmat.pbrMetallicRoughness.baseColorTexture.index = *texture_index;
 
     model.materials.push_back(gmat);
+    bsp_to_gltf_material[bsp_tex_idx] =
+        static_cast<int>(model.materials.size() - 1);
   }
 
-  tinygltf::Scene gscene;
+  // 2. Create Root "Worldspawn" Node
+  tinygltf::Node world_node;
+  world_node.name = "Worldspawn";
+  // We will push this node last to ensure all children indices are valid,
+  // or we can push it first and update children later.
+  // Let's push it first to be node 0.
+  model.nodes.push_back(world_node);
+  int world_node_idx = 0;
 
-  for (const auto& [bsp_geometry_index, geo] : scene.geometries) {
+  tinygltf::Scene gscene;
+  gscene.nodes.push_back(world_node_idx);
+
+  // 3. Export Geometries
+  for (const auto& [bsp_surf_idx, geo] : scene.geometries) {
     // Create Mesh
     tinygltf::Mesh mesh;
     tinygltf::Primitive prim;
     prim.mode = TINYGLTF_MODE_TRIANGLES;
-    prim.material = geo.material_id;
+
+    // Find assigned material
+    auto mat_it = bsp_to_gltf_material.find(geo.material_id);
+    if (mat_it != bsp_to_gltf_material.end()) {
+      prim.material = mat_it->second;
+    }
 
     // Position
     {
@@ -151,6 +172,10 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
         if (v.x() > max_v[0]) max_v[0] = v.x();
         if (v.y() > max_v[1]) max_v[1] = v.y();
         if (v.z() > max_v[2]) max_v[2] = v.z();
+      }
+      if (buffer_data.empty()) {
+        min_v = {0, 0, 0};
+        max_v = {0, 0, 0};
       }
       AddBufferView(buffer_data.data(), buffer_data.size() * sizeof(float), 12,
                     TINYGLTF_TARGET_ARRAY_BUFFER, view_idx, &model);
@@ -221,9 +246,11 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
     mesh.primitives.push_back(prim);
     model.meshes.push_back(mesh);
 
-    // Node
+    // Node for this mesh
     tinygltf::Node node;
     node.mesh = static_cast<int>(model.meshes.size() - 1);
+    node.name =
+        "Geometry_" + std::to_string(bsp_surf_idx);  // Optional: Name it
 
     // Transform
     Eigen::Matrix4f mat = geo.transform.matrix();
@@ -232,12 +259,15 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
     node.matrix = matrix;
 
     model.nodes.push_back(node);
-    gscene.nodes.push_back(static_cast<int>(model.nodes.size() - 1));
+
+    // Add as child of Worldspawn
+    model.nodes[world_node_idx].children.push_back(
+        static_cast<int>(model.nodes.size() - 1));
   }
 
   // TODO: Export Environment (Skybox)
 
-  // Export Lights (KHR_lights_punctual)
+  // 4. Export Lights (KHR_lights_punctual)
   if (!scene.lights.empty()) {
     tinygltf::Value::Array light_array;
     std::vector<int> light_node_indices;
@@ -267,9 +297,6 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
 
         tinygltf::Value::Object spot_obj;
         // Clamp to [-1, 1] to avoid NaN from std::acos with -ffast-math
-        // Use manual clamping to avoid potential issues with -ffast-math
-        // optimizations impacting std::clamp or std::acos behavior with edge
-        // cases.
         auto safe_acos = [](float cos_val) -> double {
           if (cos_val >= 1.0f) return 0.0;
           if (cos_val <= -1.0f) return 3.14159265358979323846;
@@ -300,18 +327,13 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
       // glTF lights point down -Z. We need to align -Z with light.direction.
       if (light.type == Light::Type::Directional ||
           light.type == Light::Type::Spot) {
-        // Construct Basis
-        // Z = -direction
         Eigen::Vector3f Z = -light.direction.normalized();
-        // Handle Up vector case
         Eigen::Vector3f up = Eigen::Vector3f::UnitY();
         if (std::abs(Z.dot(up)) > 0.99f) up = Eigen::Vector3f::UnitX();
 
         Eigen::Vector3f X = up.cross(Z).normalized();
         Eigen::Vector3f Y = Z.cross(X).normalized();
 
-        // Convert to Quaternion
-        // Matrix: [X Y Z]
         Eigen::Matrix3f rot;
         rot.col(0) = X;
         rot.col(1) = Y;
@@ -325,12 +347,12 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
       }
 
       // Extension on Node
-      // Using node.light tells tinygltf to write the KHR_lights_punctual
-      // extension
       node.light = light_idx;
 
       model.nodes.push_back(node);
-      gscene.nodes.push_back(static_cast<int>(model.nodes.size() - 1));
+      // Add light as child of world
+      model.nodes[world_node_idx].children.push_back(
+          static_cast<int>(model.nodes.size() - 1));
 
       light_idx++;
     }
