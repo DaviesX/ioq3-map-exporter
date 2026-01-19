@@ -65,7 +65,10 @@ TEST_F(BspMaterialTest, BuildBSPMaterialsMatchesParsed) {
   parsed[q3s.name] = q3s;
 
   VirtualFilesystem vfs("dummy_mount");
-  auto materials = BuildBSPMaterials(bsp, parsed, vfs);
+  auto materials =
+      BuildBSPMaterials(bsp, parsed, [&vfs](const std::string& shader_name) {
+        return CreateDefaultShader(shader_name, vfs);
+      });
 
   ASSERT_EQ(materials.size(), 1);
   const auto& mat = materials[0];
@@ -88,7 +91,10 @@ TEST_F(BspMaterialTest, BuildBSPMaterialsDefaultWhenMissing) {
   // Point VFS to our temp dir, which is empty.
   VirtualFilesystem vfs(temp_dir);
 
-  auto materials = BuildBSPMaterials(bsp, parsed, vfs);
+  auto materials =
+      BuildBSPMaterials(bsp, parsed, [&vfs](const std::string& shader_name) {
+        return CreateDefaultShader(shader_name, vfs);
+      });
 
   // Since "textures/common/unknown" + extensions does not exist in temp_dir,
   // it should be skipped.
@@ -112,7 +118,10 @@ TEST_F(BspMaterialTest, BuildBSPMaterialsFindsTextureOnDisk) {
   std::ofstream(texture_dir / "concrete.jpg").put('\0');
 
   VirtualFilesystem vfs(temp_dir);
-  auto materials = BuildBSPMaterials(bsp, parsed, vfs);
+  auto materials =
+      BuildBSPMaterials(bsp, parsed, [&vfs](const std::string& shader_name) {
+        return CreateDefaultShader(shader_name, vfs);
+      });
 
   ASSERT_EQ(materials.size(), 1);
   const auto& mat = materials[0];

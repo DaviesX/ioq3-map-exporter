@@ -77,7 +77,11 @@ int main(int argc, char* argv[]) {
 
   // 6. Material Extraction
   LOG(INFO) << "Building BSP Materials...";
-  auto bsp_materials = ioq3_map::BuildBSPMaterials(*bsp, parsed_shaders, *vfs);
+  auto bsp_materials = ioq3_map::BuildBSPMaterials(
+      *bsp, parsed_shaders,
+      /*create_default_shader=*/[&vfs](const std::string& shader_name) {
+        return ioq3_map::CreateDefaultShader(shader_name, *vfs);
+      });
   LOG(INFO) << "Extracted " << bsp_materials.size() << " materials.";
 
   // 7. Build Geometry
