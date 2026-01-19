@@ -38,6 +38,14 @@ find_package(PkgConfig REQUIRED)
 # This searches for minizip.pc installed by libminizip-dev
 pkg_check_modules(MINIZIP REQUIRED IMPORTED_TARGET minizip)
 
+# stb_image.
+find_path(STB_IMAGE_INCLUDE_DIR NAMES stb_image.h PATH_SUFFIXES stb)
+if(NOT STB_IMAGE_INCLUDE_DIR)
+  message(FATAL_ERROR "stb_image not found")
+endif()
+add_library(gstb_image INTERFACE)
+target_include_directories(gstb_image INTERFACE ${STB_IMAGE_INCLUDE_DIR})
+
 # tinygltf is header-only.
 find_path(TINYGLTF_INCLUDE_DIR NAMES tiny_gltf.h)
 if(NOT TINYGLTF_INCLUDE_DIR)
@@ -52,8 +60,10 @@ add_library(ioq3_map SHARED
     src/bsp_geometry.cpp
     src/bsp_material.cpp
     src/bsp_material.h
+    src/saver.cpp
     src/scene.cpp
     src/shader_parser.cpp
+    src/tinygltf_impl.cpp
     src/triangulation.cpp
 )
 
@@ -64,6 +74,7 @@ target_link_libraries(ioq3_map PUBLIC
     glog
     gflags
     ${MINIZIP_LIBRARIES}
+    gstb_image
 )
 
 target_include_directories(ioq3_map PUBLIC
@@ -84,11 +95,13 @@ add_executable(ioq3_map_exporter_test
     src/bsp_geometry_test.cpp
     src/bsp_material_test.cpp
     src/shader_parser_test.cpp
+    src/saver_test.cpp
     src/scene_test.cpp
     src/triangulation_test.cpp
 )
 target_link_libraries(ioq3_map_exporter_test PRIVATE
     ioq3_map
+    gstb_image
     GTest::gtest_main
     GTest::gmock
 )

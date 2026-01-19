@@ -128,7 +128,8 @@ TEST_F(BspMaterialTest, BuildBSPMaterialsFindsTextureOnDisk) {
   EXPECT_EQ(mat.name, "textures/common/concrete");
   // Default shader parsed from disk should have the texture layer
   ASSERT_EQ(mat.texture_layers.size(), 1);
-  EXPECT_EQ(mat.texture_layers[0].path, "textures/common/concrete.jpg");
+  EXPECT_EQ(mat.texture_layers[0].path,
+            "/tmp/ioq3_map_test_vfs/textures/common/concrete.jpg");
   EXPECT_EQ(mat.surface_flags, 1);
 }
 

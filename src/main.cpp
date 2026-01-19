@@ -11,6 +11,7 @@
 #include "bsp.h"
 #include "bsp_geometry.h"
 #include "bsp_material.h"
+#include "saver.h"
 #include "scene.h"
 #include "shader_parser.h"
 
@@ -97,6 +98,19 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "Total Materials: " << scene.materials.size();
   LOG(INFO) << "Total Lights: " << scene.lights.size();
 
-  LOG(INFO) << "Phase 3 Complete. Exiting.";
+  // 9. Export glTF
+  LOG(INFO) << "Exporting to glTF...";
+  std::filesystem::path output_path =
+      std::filesystem::path(FLAGS_output) / "scene.gltf";
+  // Ensure parent directory exists
+  std::filesystem::create_directories(output_path.parent_path());
+
+  if (!ioq3_map::SaveScene(scene, output_path)) {
+    LOG(ERROR) << "Failed to save glTF scene to " << output_path;
+    return 1;
+  }
+
+  LOG(INFO) << "Successfully exported scene to " << output_path;
+  LOG(INFO) << "Phase 4 Complete.";
   return 0;
 }

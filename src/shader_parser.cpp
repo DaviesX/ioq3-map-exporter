@@ -10,6 +10,8 @@
 #include <sstream>
 #include <string>
 
+#include "archives.h"
+
 // Basic surface flags from surfaceflags.h
 #define SURF_NODAMAGE 0x1
 #define SURF_SLICK 0x2
@@ -174,7 +176,8 @@ void ParseShaderParameter(const std::string& keyword, Tokenizer* tokenizer,
   }
 }
 
-std::vector<Q3TextureLayer> ParseShaderStages(Tokenizer* tokenizer) {
+std::vector<Q3TextureLayer> ParseShaderStages(const VirtualFilesystem& vfs,
+                                              Tokenizer* tokenizer) {
   std::vector<Q3TextureLayer> result;
 
   // Inner block (stage/pass)
@@ -201,21 +204,21 @@ std::vector<Q3TextureLayer> ParseShaderStages(Tokenizer* tokenizer) {
         // We won't need to export lightmap or whiteimage.
         continue;
       }
-      result.push_back(Q3TextureLayer{.path = texture_path});
+      result.push_back(Q3TextureLayer{.path = vfs.mount_point / texture_path});
     }
   }
 
   return result;
 }
 
-bool VerifyShader(const Q3Shader& shader, const VirtualFilesystem& vfs) {
+bool VerifyShader(const Q3Shader& shader) {
   for (const auto& layer : shader.texture_layers) {
     if (layer.path.empty()) {
       LOG(WARNING) << "Shader " << shader.name << " has empty texture path.";
       return false;
     }
 
-    std::filesystem::path texture_path = vfs.mount_point / layer.path;
+    std::filesystem::path texture_path = layer.path;
     if (!std::filesystem::exists(texture_path)) {
       LOG(WARNING) << "Shader " << shader.name << " has missing texture "
                    << texture_path;
@@ -292,14 +295,14 @@ std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScript(
 
       if (token == "{") {
         // Inner block (stage/pass).
-        shader.texture_layers = ParseShaderStages(&tokenizer);
+        shader.texture_layers = ParseShaderStages(vfs, &tokenizer);
       } else {
         // Shader parameter.
         ParseShaderParameter(token, &tokenizer, &shader);
       }
     }
 
-    if (!VerifyShader(shader, vfs)) {
+    if (!VerifyShader(shader)) {
       LOG(WARNING) << "Invalid shader " << shader.name;
       continue;
     }
@@ -352,7 +355,7 @@ std::optional<Q3Shader> CreateDefaultShader(const Q3ShaderName& name,
 
     Q3Shader shader;
     shader.name = name;
-    shader.texture_layers.push_back(Q3TextureLayer{.path = filename});
+    shader.texture_layers.push_back(Q3TextureLayer{.path = full_path});
     return shader;
   }
 
