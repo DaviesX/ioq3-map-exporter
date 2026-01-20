@@ -3,22 +3,25 @@
 
 #include <Eigen/Dense>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <variant>
 #include <vector>
+
+#include "bsp.h"
 
 namespace ioq3_map {
 
 struct SpotLightEntity {
   Eigen::Vector3f origin;
   Eigen::Vector3f direction;
+  Eigen::Vector3f color;
   float intensity;
   float spot_angle;
 };
 
 struct PointLightEntity {
   Eigen::Vector3f origin;
+  Eigen::Vector3f color;
   float intensity;
 };
 
@@ -29,10 +32,7 @@ struct Entity {
 };
 
 // Parses the entity lump string into a list of Entity objects.
-std::vector<Entity> ParseBSPEntities(std::string_view entity_lump);
-
-// Helper to print entities to stdout (for debugging/inspection).
-void PrintBSPEntities(const std::vector<Entity>& entities);
+std::vector<Entity> BuildBSPEntities(const BSP& bsp);
 
 }  // namespace ioq3_map
 
