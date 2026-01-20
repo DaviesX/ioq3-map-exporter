@@ -18,10 +18,11 @@ class SceneTest : public ::testing::Test {
   BSP bsp_;
   std::unordered_map<BSPSurfaceIndex, BSPGeometry> geometries_;
   std::unordered_map<BSPTextureIndex, BSPMaterial> materials_;
+  std::vector<Entity> entities_;
 };
 
 TEST_F(SceneTest, AssembleBSPObjectsPlanarTransform) {
-  // Setup a simple Polygon
+  // ... (setup code omitted, assumed unchanged up to the call) ...
   // Q3 Coords: triangle at Z=0
   // v0=(0,0,0), v1=(100,0,0), v2=(0,100,0) normal=(0,0,1)
   BSPGeometry geo;
@@ -46,7 +47,7 @@ TEST_F(SceneTest, AssembleBSPObjectsPlanarTransform) {
   mat.name = "textures/base_wall/concrete";
   materials_[0] = mat;
 
-  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_);
+  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_, entities_);
 
   ASSERT_EQ(scene.geometries.size(), 1);
   const auto& out_geo = scene.geometries.at(0);
@@ -89,7 +90,7 @@ TEST_F(SceneTest, AssembleBSPObjectsExtractsSun) {
   mat.q3map_sun_direction = Eigen::Vector2f(90.0f, 45.0f);  // North, 45deg up
   materials_[0] = mat;
 
-  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_);
+  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_, entities_);
 
   bool found_sun = false;
   for (const auto& l : scene.lights) {
@@ -111,6 +112,80 @@ TEST_F(SceneTest, AssembleBSPObjectsExtractsSun) {
       EXPECT_NEAR(l.direction.x(), 0.0f, 1e-3f);
       EXPECT_NEAR(l.direction.y(), -0.707f, 1e-3f);
       EXPECT_NEAR(l.direction.z(), 0.707f, 1e-3f);
+    }
+  }
+  EXPECT_TRUE(found_sun);
+}
+
+TEST_F(SceneTest, AssembleBSPObjectsExtractsEntities) {
+  // Point Light
+  PointLightEntity point;
+  point.origin = Eigen::Vector3f(100, 200, 300);
+  point.color = Eigen::Vector3f(1, 0, 0);
+  point.intensity = 500;
+  Entity e1;
+  e1.data = point;
+  entities_.push_back(e1);
+
+  // Spot Light
+  SpotLightEntity spot;
+  spot.origin = Eigen::Vector3f(0, 0, 0);
+  spot.direction = Eigen::Vector3f(0, 0, -1);
+  spot.color = Eigen::Vector3f(0, 1, 0);
+  spot.intensity = 200;
+  spot.spot_angle = 60.0f;
+  Entity e2;
+  e2.data = spot;
+  entities_.push_back(e2);
+
+  // Worldspawn Sun
+  std::unordered_map<std::string, std::string> world;
+  world["classname"] = "worldspawn";
+  world["_sunlight"] = "300";
+  world["_sunlight_color"] = "255 200 150";
+  world["_sun_mangle"] = "90 -45 0";  // Yaw Pitch Roll
+  Entity e3;
+  e3.data = world;
+  entities_.push_back(e3);
+
+  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_, entities_);
+
+  EXPECT_GE(scene.lights.size(), 3);
+
+  // Verify Point
+  bool found_point = false;
+  for (const auto& l : scene.lights) {
+    if (l.type == Light::Type::Point && l.intensity == 500.0f) {
+      found_point = true;
+      // 100 in -> 2.54 m
+      EXPECT_NEAR(l.position.x(), 2.54f, 1e-3f);
+    }
+  }
+  EXPECT_TRUE(found_point);
+
+  // Verify Spot
+  bool found_spot = false;
+  for (const auto& l : scene.lights) {
+    if (l.type == Light::Type::Spot && l.intensity == 200.0f) {
+      found_spot = true;
+      // Check angles. Inner = 0.8 * Outer. Outer = 30 deg rads.
+      float outer_rad = 30.0f * std::numbers::pi_v<float> / 180.0f;
+      float inner_rad = outer_rad * 0.8f;
+      EXPECT_NEAR(l.cos_outer_cone, std::cos(outer_rad), 1e-4f);
+      EXPECT_NEAR(l.cos_inner_cone, std::cos(inner_rad), 1e-4f);
+    }
+  }
+  EXPECT_TRUE(found_spot);
+
+  // Verify Sun
+  bool found_sun = false;
+  for (const auto& l : scene.lights) {
+    if (l.type == Light::Type::Directional && l.intensity == 300.0f) {
+      found_sun = true;
+      // Color 255 200 150 -> 1.0, 0.784, 0.588
+      EXPECT_NEAR(l.color.x(), 1.0f, 1e-3f);
+      EXPECT_NEAR(l.color.y(), 0.784f, 1e-3f);
+      EXPECT_NEAR(l.color.z(), 0.588f, 1e-3f);
     }
   }
   EXPECT_TRUE(found_sun);

@@ -91,10 +91,15 @@ int main(int argc, char* argv[]) {
   auto bsp_geometries = ioq3_map::BuildBSPGeometries(*bsp);
   LOG(INFO) << "Parsed " << bsp_geometries.size() << " BSP surfaces.";
 
+  // 7b. Build Entities
+  LOG(INFO) << "Building BSP Entities...";
+  auto bsp_entities = ioq3_map::BuildBSPEntities(*bsp);
+  LOG(INFO) << "Extracted " << bsp_entities.size() << " entities.";
+
   // 8. Assemble Scene
   LOG(INFO) << "Assembling Scene...";
-  auto scene =
-      ioq3_map::AssembleBSPObjects(*bsp, bsp_geometries, bsp_materials);
+  auto scene = ioq3_map::AssembleBSPObjects(*bsp, bsp_geometries, bsp_materials,
+                                            bsp_entities);
   LOG(INFO) << "Scene Assembled. Total Geometries: " << scene.geometries.size();
   LOG(INFO) << "Total Materials: " << scene.materials.size();
   LOG(INFO) << "Total Lights: " << scene.lights.size();
