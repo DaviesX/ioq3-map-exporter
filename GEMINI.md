@@ -148,7 +148,20 @@ We will create a ASCII glTF file as an end product in this phase.
 4. **Export:** Write `scene.gltf` and copy the associated texture files to the output directory.
 5. **Main:** Update the main function to call the glTF writer.
 
-## Phase 5: Metadata & Manifest
+## Phase 5: The Light Entities.
+We will extract the point lights and spot lights from the lump 0 of the BSP. Example lump 0 string: `docs/entity_lump`
+
+1. **Entity Parsing:** Define C++ structs for light entities in the module `src/bsp_entity.h` and implement the parsing logic in `src/bsp_entity.cpp`. Add a function called BuildBSPEntities() that takes the BSP as argument and returns a list of entities.
+  - Point Light	Lump 0 (light)	point	classname == "light" AND !has_key("target")
+  - Spotlight	Lump 0 (light)	spot	classname == "light" AND has_key("target")
+    - The target position is defined in another entity with the target name.
+    - The radius is in inches at the target position. Convert it to degrees of the light cone. If unspecified, the default is 64 inches.
+2. **Assembly:** Update the function AssembleBSPObjects with a new argument called `bsp_entities` that takes the list of entities as argument. Within the function, make sure that it creates the punctual light sources from the entities.
+  - Hard code the inner cone angle relative to the outer cone in scene.cpp.
+3. **glTF Writer:** Make sure the glTF writer includes the punctual light sources in the scene.
+4. **Main:** Update the main function to call BuildBSPEntities and pass the result to AssembleBSPObjects.
+
+## Phase 6: Metadata & Manifest
 
 1. **Manifest Logic:** In the saver module, record the mapping.
 2. **JSON Output:**
