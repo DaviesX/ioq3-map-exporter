@@ -9,6 +9,7 @@
 
 #include "archives.h"
 #include "bsp.h"
+#include "bsp_entity.h"
 #include "bsp_geometry.h"
 #include "bsp_material.h"
 #include "saver.h"
@@ -68,6 +69,16 @@ int main(int argc, char* argv[]) {
   }
   LOG(INFO) << "Successfully loaded BSP header. Lumps found: "
             << bsp->lumps.size();
+
+  // 4.5 Parse Entities (Debug)
+  if (auto it = bsp->lumps.find(ioq3_map::LumpType::Entities);
+      it != bsp->lumps.end()) {
+    LOG(INFO) << "Parsing Entities...";
+    auto entities = ioq3_map::ParseBSPEntities(it->second);
+    // ioq3_map::PrintBSPEntities(entities);
+  } else {
+    LOG(WARNING) << "No Entity lump found!";
+  }
 
   // 5. Shader Extraction
   LOG(INFO) << "Extracting Shaders...";
