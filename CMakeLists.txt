@@ -57,6 +57,7 @@ add_library(tinygltf INTERFACE)
 add_library(ioq3_map SHARED
     src/archives.cpp
     src/bsp.cpp
+    src/bsp_entity.cpp
     src/bsp_geometry.cpp
     src/bsp_material.cpp
     src/bsp_material.h
@@ -92,6 +93,7 @@ enable_testing()
 add_executable(ioq3_map_exporter_test
     src/archives_test.cpp
     src/bsp_test.cpp
+    src/bsp_entity_test.cpp
     src/bsp_geometry_test.cpp
     src/bsp_material_test.cpp
     src/shader_parser_test.cpp

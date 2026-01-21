@@ -6,6 +6,7 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -220,8 +221,8 @@ bool VerifyShader(const Q3Shader& shader) {
 
     std::filesystem::path texture_path = layer.path;
     if (!std::filesystem::exists(texture_path)) {
-      LOG(WARNING) << "Shader " << shader.name << " has missing texture "
-                   << texture_path;
+      DLOG(WARNING) << "Shader " << shader.name << " has missing texture "
+                    << texture_path;
       return false;
     }
   }
@@ -303,7 +304,6 @@ std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScript(
     }
 
     if (!VerifyShader(shader)) {
-      LOG(WARNING) << "Invalid shader " << shader.name;
       continue;
     }
 

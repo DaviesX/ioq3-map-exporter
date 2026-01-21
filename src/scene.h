@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "bsp_entity.h"
 #include "bsp_geometry.h"
 #include "bsp_material.h"
 
@@ -79,7 +80,8 @@ struct Scene {
 Scene AssembleBSPObjects(
     const BSP& bsp,
     const std::unordered_map<BSPSurfaceIndex, BSPGeometry>& bsp_geometries,
-    const std::unordered_map<BSPTextureIndex, BSPMaterial>& bsp_materials);
+    const std::unordered_map<BSPTextureIndex, BSPMaterial>& bsp_materials,
+    const std::vector<Entity>& bsp_entities);
 
 }  // namespace ioq3_map
 
