@@ -2,6 +2,7 @@
 
 #include <glog/logging.h>
 
+#include <Eigen/Dense>
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -219,6 +220,8 @@ std::optional<Q3TextureLayer> ParseShaderStages(const VirtualFilesystem& vfs,
       result.path = vfs.mount_point / texture_path;
     } else if (keyword == "tcmod") {
       std::string tcmod_op = tokenizer->Next();
+      std::transform(tcmod_op.begin(), tcmod_op.end(), tcmod_op.begin(),
+                     ::tolower);
       if (tcmod_op == "scale") {
         float s = std::stof(tokenizer->Next());
         float t = std::stof(tokenizer->Next());
@@ -253,6 +256,20 @@ std::optional<Q3TextureLayer> ParseShaderStages(const VirtualFilesystem& vfs,
         float frequency = std::stof(tokenizer->Next());
         result.tcmod =
             Q3TCModStretch{wave_type, base, amplitude, phase, frequency};
+      } else if (tcmod_op == "transform") {
+        float m00 = std::stof(tokenizer->Next());
+        float m01 = std::stof(tokenizer->Next());
+        float m10 = std::stof(tokenizer->Next());
+        float m11 = std::stof(tokenizer->Next());
+        float t0 = std::stof(tokenizer->Next());
+        float t1 = std::stof(tokenizer->Next());
+
+        Q3TCModTransform transform;
+        // clang-format off
+        transform << m00, m01, t0,
+                     m10, m11, t1;
+        // clang-format on
+        result.tcmod = transform;
       } else {
         LOG(WARNING) << "Unknown tcmod operation: " << tcmod_op;
       }

@@ -55,10 +55,12 @@ struct Q3TCModStretch {
   float frequency;
 };
 
+using Q3TCModTransform = Eigen::Matrix<float, 2, 3>;  // Affine transform.
+
 struct Q3TextureLayer {
   std::filesystem::path path;
   std::variant<Q3TCModNoOp, Q3TCModScale, Q3TCModScroll, Q3TCModRotate,
-               Q3TCModTurb, Q3TCModStretch>
+               Q3TCModTurb, Q3TCModStretch, Q3TCModTransform>
       tcmod = Q3TCModNoOp{};
 
   // TODO: Add blending mode, etc.
