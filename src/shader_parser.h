@@ -5,16 +5,61 @@
 #include <filesystem>
 #include <string>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 #include "archives.h"
 
 namespace ioq3_map {
 
+enum class Q3WaveType {
+  NONE,
+  SINE,
+  TRIANGLE,
+  SQUARE,
+  SAWTOOTH,
+  INVERSE_SAWTOOTH,
+};
+
 using Q3ShaderName = std::string;
+
+struct Q3TCModNoOp {};
+
+struct Q3TCModScale {
+  float s_scale;
+  float t_scale;
+};
+
+struct Q3TCModScroll {
+  float s_rate;
+  float t_rate;
+};
+
+struct Q3TCModRotate {
+  float angle;
+};
+
+struct Q3TCModTurb {
+  Q3WaveType wave_type;  // Optional.
+  float base;
+  float amplitude;
+  float phase;
+  float frequency;
+};
+
+struct Q3TCModStretch {
+  Q3WaveType wave_type;  // Required.
+  float base;
+  float amplitude;
+  float phase;
+  float frequency;
+};
 
 struct Q3TextureLayer {
   std::filesystem::path path;
+  std::variant<Q3TCModNoOp, Q3TCModScale, Q3TCModScroll, Q3TCModRotate,
+               Q3TCModTurb, Q3TCModStretch>
+      tcmod = Q3TCModNoOp{};
 
   // TODO: Add blending mode, etc.
 

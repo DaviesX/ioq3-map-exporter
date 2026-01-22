@@ -174,10 +174,18 @@ Scene AssembleBSPObjects(
     mat.name = bsp_mat.name;
 
     // Albedo
-    if (!bsp_mat.texture_layers.empty()) {
-      mat.albedo.file_path = bsp_mat.texture_layers[0].path;
-    } else {
-      mat.albedo.file_path = bsp_mat.name;
+    if (bsp_mat.texture_layers.empty()) {
+      LOG(WARNING) << "Material " << bsp_mat.name << " has no texture layers";
+      continue;
+    }
+    // TODO: Support multiple texture layers.
+    for (const auto& layer : bsp_mat.texture_layers) {
+      if (std::holds_alternative<Q3TCModNoOp>(layer.tcmod)) {
+        mat.albedo.file_path = layer.path;
+      } else {
+        // TODO: Implement tcmod. This links to the multi-texture support. We
+        // will skip this for now.
+      }
     }
 
     // Emission
@@ -187,56 +195,45 @@ Scene AssembleBSPObjects(
 
     // Sun check
     if (bsp_mat.q3map_sun_intensity > 0.0f) {
-      // Check if we already have a sun
-      bool sun_exists = false;
-      for (const auto& l : scene.lights) {
-        if (l.type == Light::Type::Directional) {
-          sun_exists = true;
-          break;
-        }
-      }
+      Light sun;
+      sun.type = Light::Type::Directional;
+      // q3map_sun color is usually 0-1 or 0-255?
+      // Specs say: "color is a vector of 3 floats". Examples show "1 0.9
+      // 0.8". So likely normalized.
+      sun.color = bsp_mat.q3map_sun_color;
+      sun.intensity = bsp_mat.q3map_sun_intensity;
 
-      if (!sun_exists) {
-        Light sun;
-        sun.type = Light::Type::Directional;
-        // q3map_sun color is usually 0-1 or 0-255?
-        // Specs say: "color is a vector of 3 floats". Examples show "1 0.9
-        // 0.8". So likely normalized.
-        sun.color = bsp_mat.q3map_sun_color;
-        sun.intensity = bsp_mat.q3map_sun_intensity;
+      // Calculate direction
+      // q3map_sun <r> <g> <b> <intensity> <degrees> <elevation>
+      // degrees: 0=East, 90=North
+      // elevation: 0=Horizon, 90=Up
+      // We want direction FROM light? Or TO light.
+      // glTF directional light defines 'direction' as the direction the light
+      // travels. Sun at specific angles implies light travels OPPOSITE to
+      // that vector.
 
-        // Calculate direction
-        // q3map_sun <r> <g> <b> <intensity> <degrees> <elevation>
-        // degrees: 0=East, 90=North
-        // elevation: 0=Horizon, 90=Up
-        // We want direction FROM light? Or TO light.
-        // glTF directional light defines 'direction' as the direction the light
-        // travels. Sun at specific angles implies light travels OPPOSITE to
-        // that vector.
+      // Convert to radians
+      float yaw_deg = bsp_mat.q3map_sun_direction.x();
+      float el_deg = bsp_mat.q3map_sun_direction.y();
+      float yaw_rad = yaw_deg * std::numbers::pi_v<float> / 180.0f;
+      float el_rad = el_deg * std::numbers::pi_v<float> / 180.0f;
 
-        // Convert to radians
-        float yaw_deg = bsp_mat.q3map_sun_direction.x();
-        float el_deg = bsp_mat.q3map_sun_direction.y();
-        float yaw_rad = yaw_deg * std::numbers::pi_v<float> / 180.0f;
-        float el_rad = el_deg * std::numbers::pi_v<float> / 180.0f;
+      // Q3 vector to sun (Z-up)
+      float cz = std::sin(el_rad);
+      float r = std::cos(el_rad);
+      float cx = r * std::cos(yaw_rad);
+      float cy = r * std::sin(yaw_rad);
 
-        // Q3 vector to sun (Z-up)
-        float cz = std::sin(el_rad);
-        float r = std::cos(el_rad);
-        float cx = r * std::cos(yaw_rad);
-        float cy = r * std::sin(yaw_rad);
+      Eigen::Vector3f q3_sun_pos(cx, cy, cz);
+      // Light direction is -q3_sun_pos
+      Eigen::Vector3f q3_light_dir = -q3_sun_pos;
 
-        Eigen::Vector3f q3_sun_pos(cx, cy, cz);
-        // Light direction is -q3_sun_pos
-        Eigen::Vector3f q3_light_dir = -q3_sun_pos;
+      // Transform to glTF space (Y-up) using TransformNormal
+      // Wait, TransformNormal rotates -90 X.
+      // x' = x, y' = z, z' = -y
+      sun.direction = TransformNormal(q3_light_dir);
 
-        // Transform to glTF space (Y-up) using TransformNormal
-        // Wait, TransformNormal rotates -90 X.
-        // x' = x, y' = z, z' = -y
-        sun.direction = TransformNormal(q3_light_dir);
-
-        scene.lights.push_back(std::move(sun));
-      }
+      scene.lights.push_back(std::move(sun));
     }
   }
 
@@ -247,46 +244,43 @@ Scene AssembleBSPObjects(
     out_geo.transform = Eigen::Affine3f::Identity();
 
     // Triangulate / Convert
-    bool valid_geo = false;
     if (std::holds_alternative<BSPPolygon>(geo.primitive)) {
       const auto& poly = std::get<BSPPolygon>(geo.primitive);
       BSPMesh mesh = Triangulate(poly);
       ToGeometry(mesh, &out_geo);
-      valid_geo = true;
     } else if (std::holds_alternative<BSPMesh>(geo.primitive)) {
       const auto& mesh = std::get<BSPMesh>(geo.primitive);
       ToGeometry(mesh, &out_geo);
-      valid_geo = true;
     } else if (std::holds_alternative<BSPPatch>(geo.primitive)) {
       const auto& patch = std::get<BSPPatch>(geo.primitive);
       BSPMesh mesh = Triangulate(patch);
       ToGeometry(mesh, &out_geo);
-      valid_geo = true;
+    } else {
+      LOG(ERROR) << "Unknown primitive type: " << geo.primitive.index();
+      continue;
     }
 
-    if (valid_geo) {
-      scene.geometries.emplace(surface_idx, std::move(out_geo));
+    scene.geometries.emplace(surface_idx, std::move(out_geo));
 
-      // 4. Check for Area Light (Emissive Material)
-      auto mat_it = scene.materials.find(geo.texture_index);
-      if (mat_it != scene.materials.end() &&
-          mat_it->second.emission_intensity > 0.0f) {
-        Light area_light;
-        area_light.type = Light::Type::Area;
-        area_light.intensity = mat_it->second.emission_intensity;
-        area_light.material_id = geo.texture_index;
-        area_light.geometry_index = surface_idx;
-        area_light.color =
-            Eigen::Vector3f::Ones();  // Use material lightimage/color?
-        // "q3map_lightimage": texture for color. "q3map_sunlight" or
-        // "surfacelight" for intensity. For now use white, Phase 3
-        // implementation says "extract... to match Q3 specs". If lightimage is
-        // present, albedo might handle it or we need to extract average color.
-        // Extracting average color from texture is complex (Image processing).
-        // We'll leave color as white for now or rely on renderer to sample
-        // texture.
-        scene.lights.push_back(std::move(area_light));
-      }
+    // 4. Check for Area Light (Emissive Material)
+    auto mat_it = scene.materials.find(geo.texture_index);
+    if (mat_it != scene.materials.end() &&
+        mat_it->second.emission_intensity > 0.0f) {
+      Light area_light;
+      area_light.type = Light::Type::Area;
+      area_light.intensity = mat_it->second.emission_intensity;
+      area_light.material_id = geo.texture_index;
+      area_light.geometry_index = surface_idx;
+      area_light.color =
+          Eigen::Vector3f::Ones();  // Use material lightimage/color?
+      // "q3map_lightimage": texture for color. "q3map_sunlight" or
+      // "surfacelight" for intensity. For now use white, Phase 3
+      // implementation says "extract... to match Q3 specs". If lightimage is
+      // present, albedo might handle it or we need to extract average color.
+      // Extracting average color from texture is complex (Image processing).
+      // We'll leave color as white for now or rely on renderer to sample
+      // texture.
+      scene.lights.push_back(std::move(area_light));
     }
   }
 

@@ -144,6 +144,18 @@ int GetSurfaceParmFlag(const std::string& parm) {
   return 0;
 }
 
+Q3WaveType GetWaveType(const std::string& wave_func) {
+  std::string w = wave_func;
+  std::transform(w.begin(), w.end(), w.begin(), ::tolower);
+
+  if (w == "sin") return Q3WaveType::SINE;
+  if (w == "triangle") return Q3WaveType::TRIANGLE;
+  if (w == "square") return Q3WaveType::SQUARE;
+  if (w == "sawtooth") return Q3WaveType::SAWTOOTH;
+  if (w == "inversesawtooth") return Q3WaveType::INVERSE_SAWTOOTH;
+  return Q3WaveType::NONE;
+}
+
 void ParseShaderParameter(const std::string& keyword, Tokenizer* tokenizer,
                           Q3Shader* shader) {
   std::string lower_keyword = keyword;
@@ -177,9 +189,9 @@ void ParseShaderParameter(const std::string& keyword, Tokenizer* tokenizer,
   }
 }
 
-std::vector<Q3TextureLayer> ParseShaderStages(const VirtualFilesystem& vfs,
-                                              Tokenizer* tokenizer) {
-  std::vector<Q3TextureLayer> result;
+std::optional<Q3TextureLayer> ParseShaderStages(const VirtualFilesystem& vfs,
+                                                Tokenizer* tokenizer) {
+  Q3TextureLayer result;
 
   // Inner block (stage/pass)
   while (tokenizer->HasMore()) {
@@ -196,37 +208,81 @@ std::vector<Q3TextureLayer> ParseShaderStages(const VirtualFilesystem& vfs,
       }
     }
 
-    std::string lower_inner = inner;
-    std::transform(lower_inner.begin(), lower_inner.end(), lower_inner.begin(),
-                   ::tolower);
-    if (lower_inner == "map") {
+    std::string keyword = inner;
+    std::transform(keyword.begin(), keyword.end(), keyword.begin(), ::tolower);
+    if (keyword == "map") {
       std::string texture_path = tokenizer->Next();
       if (texture_path == "$lightmap" || texture_path == "$whiteimage") {
         // We won't need to export lightmap or whiteimage.
         continue;
       }
-      result.push_back(Q3TextureLayer{.path = vfs.mount_point / texture_path});
+      result.path = vfs.mount_point / texture_path;
+    } else if (keyword == "tcmod") {
+      std::string tcmod_op = tokenizer->Next();
+      if (tcmod_op == "scale") {
+        float s = std::stof(tokenizer->Next());
+        float t = std::stof(tokenizer->Next());
+        result.tcmod = Q3TCModScale{s, t};
+      } else if (tcmod_op == "scroll") {
+        float s = std::stof(tokenizer->Next());
+        float t = std::stof(tokenizer->Next());
+        result.tcmod = Q3TCModScroll{s, t};
+      } else if (tcmod_op == "rotate") {
+        float angle = std::stof(tokenizer->Next());
+        result.tcmod = Q3TCModRotate{angle};
+      } else if (tcmod_op == "turb") {
+        std::string base_or_func = tokenizer->Next();
+        Q3WaveType wave_type = GetWaveType(base_or_func);
+
+        float base;
+        if (wave_type == Q3WaveType::NONE) {
+          base = std::stof(base_or_func);
+        } else {
+          base = std::stof(tokenizer->Next());
+        }
+        float amplitude = std::stof(tokenizer->Next());
+        float phase = std::stof(tokenizer->Next());
+        float frequency = std::stof(tokenizer->Next());
+        result.tcmod =
+            Q3TCModTurb{wave_type, base, amplitude, phase, frequency};
+      } else if (tcmod_op == "stretch") {
+        Q3WaveType wave_type = GetWaveType(tokenizer->Next());
+        float base = std::stof(tokenizer->Next());
+        float amplitude = std::stof(tokenizer->Next());
+        float phase = std::stof(tokenizer->Next());
+        float frequency = std::stof(tokenizer->Next());
+        result.tcmod =
+            Q3TCModStretch{wave_type, base, amplitude, phase, frequency};
+      } else {
+        LOG(WARNING) << "Unknown tcmod operation: " << tcmod_op;
+      }
     }
   }
 
+  if (result.path.empty()) {
+    return std::nullopt;
+  }
   return result;
 }
 
-bool VerifyShader(const Q3Shader& shader) {
-  for (const auto& layer : shader.texture_layers) {
-    if (layer.path.empty()) {
-      LOG(WARNING) << "Shader " << shader.name << " has empty texture path.";
-      return false;
+void PruneInvalidTextureLayers(Q3Shader* shader) {
+  for (auto it = shader->texture_layers.begin();
+       it != shader->texture_layers.end();) {
+    if (it->path.empty()) {
+      LOG(WARNING) << "Shader " << shader->name << " has empty texture path.";
+      it = shader->texture_layers.erase(it);
+      continue;
     }
 
-    std::filesystem::path texture_path = layer.path;
+    std::filesystem::path texture_path = it->path;
     if (!std::filesystem::exists(texture_path)) {
-      DLOG(WARNING) << "Shader " << shader.name << " has missing texture "
+      DLOG(WARNING) << "Shader " << shader->name << " has missing texture "
                     << texture_path;
-      return false;
+      it = shader->texture_layers.erase(it);
+      continue;
     }
+    ++it;
   }
-  return true;
 }
 
 }  // namespace
@@ -296,17 +352,17 @@ std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScript(
 
       if (token == "{") {
         // Inner block (stage/pass).
-        shader.texture_layers = ParseShaderStages(vfs, &tokenizer);
+        auto texture_layer = ParseShaderStages(vfs, &tokenizer);
+        if (texture_layer) {
+          shader.texture_layers.push_back(*texture_layer);
+        }
       } else {
         // Shader parameter.
         ParseShaderParameter(token, &tokenizer, &shader);
       }
     }
 
-    if (!VerifyShader(shader)) {
-      continue;
-    }
-
+    PruneInvalidTextureLayers(&shader);
     result.emplace(shader.name, std::move(shader));
   }
 

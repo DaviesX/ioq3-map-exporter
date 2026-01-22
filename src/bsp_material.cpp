@@ -11,6 +11,12 @@ namespace {
 
 const std::unordered_set<Q3ShaderName> kShouldSkipShaders = {
     "noshader",
+    "textures/common/caulk",
+    "textures/common/clip",
+    "textures/common/donotenter",
+    "textures/common/hint",
+    "textures/common/nodraw",
+    "textures/common/weapclip",
 };
 
 }  // namespace
