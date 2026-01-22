@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include "bsp_geometry.h"
+#include "shader_parser.h"
 
 namespace ioq3_map {
 namespace {
@@ -45,6 +46,8 @@ TEST_F(SceneTest, AssembleBSPObjectsPlanarTransform) {
   // Setup Material
   BSPMaterial mat;
   mat.name = "textures/base_wall/concrete";
+  mat.texture_layers.push_back(Q3TextureLayer{
+      .path = "./vfs_mount_point/textures/base_wall/concrete.tga"});
   materials_[0] = mat;
 
   Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_, entities_);
