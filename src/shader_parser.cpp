@@ -40,6 +40,8 @@ namespace {
 
 const char* kScriptFolder = "scripts";
 const char* kShaderExtension = ".shader";
+const std::vector<std::string> kTextureExtensions = {".tga", ".jpg", ".jpeg",
+                                                     ".png"};
 
 // Tokenizer helper
 class Tokenizer {
@@ -282,6 +284,24 @@ std::optional<Q3TextureLayer> ParseShaderStages(const VirtualFilesystem& vfs,
   return result;
 }
 
+std::optional<std::filesystem::path> FindTexturePath(
+    const std::filesystem::path& path) {
+  std::filesystem::path candidate = path;
+  if (std::filesystem::exists(candidate)) {
+    return candidate;
+  }
+
+  // Try to find a valid extension
+  for (const auto& ext : kTextureExtensions) {
+    candidate.replace_extension(ext);
+    if (std::filesystem::exists(candidate)) {
+      return candidate;
+    }
+  }
+
+  return std::nullopt;
+}
+
 void PruneInvalidTextureLayers(Q3Shader* shader) {
   for (auto it = shader->texture_layers.begin();
        it != shader->texture_layers.end();) {
@@ -291,13 +311,14 @@ void PruneInvalidTextureLayers(Q3Shader* shader) {
       continue;
     }
 
-    std::filesystem::path texture_path = it->path;
-    if (!std::filesystem::exists(texture_path)) {
+    auto found_path = FindTexturePath(it->path);
+    if (!found_path) {
       DLOG(WARNING) << "Shader " << shader->name << " has missing texture "
-                    << texture_path;
+                    << it->path;
       it = shader->texture_layers.erase(it);
       continue;
     }
+    it->path = *found_path;
     ++it;
   }
 }
@@ -407,32 +428,16 @@ std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScripts(
 // found, return std::nullopt.
 std::optional<Q3Shader> CreateDefaultShader(const Q3ShaderName& name,
                                             const VirtualFilesystem& vfs) {
-  // Common texture extensions in Q3
-  static const std::vector<std::string> extensions = {".tga", ".jpg", ".png",
-                                                      ".jpeg"};
-
-  for (const auto& ext : extensions) {
-    std::string filename = name + ext;
-    std::filesystem::path full_path = vfs.mount_point / filename;
-
-    // We use std::filesystem::exists to check.
-    // Ensure we handle case sensitivity if possible, but IOQ3 is mixed.
-    // For now, rely on FS or assuming lower case matching (Q3 is usually case
-    // insensitive). The VFS/Filesystem on Linux is case sensitive, which might
-    // be a problem if the PK3 was authored on Windows.
-    // Ideally we would search, but for Phase 1/2 we'll assume correct casing or
-    // simple existence.
-    if (!std::filesystem::exists(full_path)) {
-      continue;
-    }
-
-    Q3Shader shader;
-    shader.name = name;
-    shader.texture_layers.push_back(Q3TextureLayer{.path = full_path});
-    return shader;
+  auto texture_path = FindTexturePath(vfs.mount_point / name);
+  if (!texture_path) {
+    LOG(WARNING) << "Could not find texture for shader " << name;
+    return std::nullopt;
   }
 
-  return std::nullopt;
+  Q3Shader shader;
+  shader.name = name;
+  shader.texture_layers.push_back(Q3TextureLayer{.path = *texture_path});
+  return shader;
 }
 
 }  // namespace ioq3_map
