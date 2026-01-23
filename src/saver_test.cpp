@@ -271,4 +271,70 @@ TEST(SaverTest, SaveComplexScene) {
   std::filesystem::remove_all(temp_dir);
 }
 
+TEST(SaverTest, SaveAreaLightWithEmissiveMaterial) {
+  Scene scene;
+
+  // Material with High Emission
+  Material mat;
+  mat.name = "EmissiveMat";
+  mat.emission_intensity =
+      5.0f;  // High intensity -> Needs extension or clamping
+  scene.materials[0] = mat;
+
+  // Add a geometry using this material
+  Geometry geo;
+  geo.vertices = {Eigen::Vector3f(0, 0, 0), Eigen::Vector3f(1, 0, 0),
+                  Eigen::Vector3f(0, 1, 0)};
+  geo.indices = {0, 1, 2};
+  geo.material_id = 0;
+  scene.geometries[0] = geo;
+
+  // Emulate Area Light in lights array (should be ignored by saver loop but
+  // material should handle it)
+  Light areaLight;
+  areaLight.type = Light::Type::Area;
+  areaLight.intensity = 5.0f;
+  areaLight.material_id = 0;
+  scene.lights.push_back(areaLight);
+
+  std::filesystem::path temp_dir =
+      std::filesystem::temp_directory_path() / "area_light_test";
+  std::filesystem::create_directories(temp_dir);
+  std::filesystem::path output_path = temp_dir / "area.gltf";
+
+  ASSERT_TRUE(SaveScene(scene, output_path));
+
+  // Load back
+  tinygltf::Model model;
+  tinygltf::TinyGLTF loader;
+  std::string err, warn;
+  ASSERT_TRUE(
+      loader.LoadASCIIFromFile(&model, &err, &warn, output_path.string()));
+
+  ASSERT_EQ(model.materials.size(), 1);
+  const auto& gmat = model.materials[0];
+
+  // Check Emissive Factor
+  EXPECT_EQ(gmat.emissiveFactor.size(), 3);
+  EXPECT_DOUBLE_EQ(gmat.emissiveFactor[0], 1.0);
+  EXPECT_DOUBLE_EQ(gmat.emissiveFactor[1], 1.0);
+  EXPECT_DOUBLE_EQ(gmat.emissiveFactor[2], 1.0);
+
+  // Check Extension
+  // We expect KHR_materials_emissive_strength because intensity is 5.0
+  auto ext_it = gmat.extensions.find("KHR_materials_emissive_strength");
+  ASSERT_NE(ext_it, gmat.extensions.end());
+  EXPECT_TRUE(ext_it->second.Has("emissiveStrength"));
+  EXPECT_DOUBLE_EQ(ext_it->second.Get("emissiveStrength").Get<double>(), 5.0);
+
+  // Check that extension is in extensionsUsed
+  bool has_ext = false;
+  for (const auto& ext : model.extensionsUsed) {
+    if (ext == "KHR_materials_emissive_strength") has_ext = true;
+  }
+  EXPECT_TRUE(has_ext);
+
+  std::filesystem::remove_all(temp_dir);
+}
+
 }  // namespace ioq3_map
