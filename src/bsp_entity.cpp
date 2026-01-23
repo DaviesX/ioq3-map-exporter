@@ -111,15 +111,23 @@ std::vector<Entity> BuildBSPEntities(const BSP& bsp) {
     if (classname == "light") {
       // Common light properties
       Eigen::Vector3f origin = Eigen::Vector3f::Zero();
-      if (ent.count("origin")) origin = ParseVector3(ent.at("origin"));
+      if (ent.count("origin")) {
+        origin = ParseVector3(ent.at("origin"));
+      }
 
       float intensity = 300.0f;  // Default
-      if (ent.count("light")) intensity = std::stof(ent.at("light"));
-      if (ent.count("_light")) intensity = std::stof(ent.at("_light"));
+      if (ent.count("light")) {
+        intensity = std::stof(ent.at("light"));
+      }
+      if (ent.count("_light")) {
+        intensity = std::stof(ent.at("_light"));
+      }
 
       // Process color if present
       Eigen::Vector3f color = Eigen::Vector3f::Ones();
-      if (ent.count("_color")) color = ParseColor(ent.at("_color"));
+      if (ent.count("_color")) {
+        color = ParseColor(ent.at("_color"));
+      }
 
       auto it_target = ent.find("target");
       if (it_target != ent.end() && target_origins.count(it_target->second)) {

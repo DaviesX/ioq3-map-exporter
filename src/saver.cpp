@@ -3,6 +3,7 @@
 #include <glog/logging.h>
 #include <tiny_gltf.h>
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <map>
@@ -121,6 +122,31 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
       if (texture_index.has_value()) {
         gmat.pbrMetallicRoughness.baseColorTexture.index = *texture_index;
       }
+    }
+
+    // Handle Emission (Area Light)
+    if (mat.emission_intensity > 0.0f) {
+      // 1. Set Emissive Factor (White)
+      gmat.emissiveFactor = {1.0, 1.0, 1.0};
+
+      // 2. Reuse Albedo as Emissive Texture
+      if (gmat.pbrMetallicRoughness.baseColorTexture.index != -1) {
+        gmat.emissiveTexture.index =
+            gmat.pbrMetallicRoughness.baseColorTexture.index;
+      }
+
+      // 3. Use KHR_materials_emissive_strength for high intensity
+      if (std::find(model.extensionsUsed.begin(), model.extensionsUsed.end(),
+                    "KHR_materials_emissive_strength") ==
+          model.extensionsUsed.end()) {
+        model.extensionsUsed.push_back("KHR_materials_emissive_strength");
+      }
+
+      tinygltf::Value::Object ext_obj;
+      ext_obj["emissiveStrength"] =
+          tinygltf::Value(double(mat.emission_intensity));
+      gmat.extensions["KHR_materials_emissive_strength"] =
+          tinygltf::Value(ext_obj);
     }
 
     model.materials.push_back(gmat);
