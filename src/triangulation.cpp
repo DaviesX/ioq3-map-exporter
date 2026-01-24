@@ -6,6 +6,13 @@ BSPMesh Triangulate(const BSPPolygon& polygon) {
   BSPMesh mesh;
   mesh.vertices = polygon.vertices;
 
+  // If explicit triangulation indices are provided (e.g. from BSP meshverts),
+  // use them.
+  if (!polygon.indices.empty()) {
+    mesh.indices = polygon.indices;
+    return mesh;
+  }
+
   const size_t num_verts = polygon.vertices.size();
   if (num_verts < 3) {
     return mesh;
