@@ -48,6 +48,27 @@ TEST(TriangulationTest, TriangulateTriangle) {
   EXPECT_EQ(mesh.indices[2], 2);
 }
 
+TEST(TriangulationTest, TriangulateWithIndices) {
+  BSPPolygon poly;
+  poly.vertices.resize(4);
+  // Square
+  poly.vertices[0].xyz = {0, 0, 0};
+  poly.vertices[1].xyz = {1, 0, 0};
+  poly.vertices[2].xyz = {1, 1, 0};
+  poly.vertices[3].xyz = {0, 1, 0};
+
+  // Provide explicit indices (e.g. 0, 1, 2 only - just one triangle)
+  poly.indices = {0, 1, 2};
+
+  BSPMesh mesh = Triangulate(poly);
+
+  EXPECT_EQ(mesh.vertices.size(), 4);
+  EXPECT_EQ(mesh.indices.size(), 3);
+  EXPECT_EQ(mesh.indices[0], 0);
+  EXPECT_EQ(mesh.indices[1], 1);
+  EXPECT_EQ(mesh.indices[2], 2);
+}
+
 TEST(TriangulationTest, NotEnoughVertices) {
   BSPPolygon poly;
   poly.vertices.resize(2);
