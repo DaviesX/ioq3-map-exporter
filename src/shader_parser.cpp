@@ -159,7 +159,28 @@ Q3WaveType GetWaveType(const std::string& wave_func) {
   return Q3WaveType::NONE;
 }
 
-void ParseShaderParameter(const std::string& keyword, Tokenizer* tokenizer,
+BlendFunc ParseBlendFunc(const std::string& func_name) {
+  std::string f = func_name;
+  std::transform(f.begin(), f.end(), f.begin(), ::tolower);
+
+  if (f == "gl_zero") return BlendFunc::ZERO;
+  if (f == "gl_one") return BlendFunc::ONE;
+  if (f == "gl_dst_color") return BlendFunc::DST_COLOR;
+  if (f == "gl_one_minus_dst_color") return BlendFunc::ONE_MINUS_DST_COLOR;
+  if (f == "gl_src_alpha") return BlendFunc::SRC_ALPHA;
+  if (f == "gl_one_minus_src_alpha") return BlendFunc::ONE_MINUS_SRC_ALPHA;
+  if (f == "gl_dst_alpha") return BlendFunc::DST_ALPHA;
+  if (f == "gl_one_minus_dst_alpha") return BlendFunc::ONE_MINUS_DST_ALPHA;
+  if (f == "gl_src_color") return BlendFunc::SRC_COLOR;
+  if (f == "gl_one_minus_src_color") return BlendFunc::ONE_MINUS_SRC_COLOR;
+
+  // Defaults to One/Zero if unknown, or maybe we should log?
+  // Let's assume ONE for now if invalid, but usually parser should handle this.
+  return BlendFunc::ONE;
+}
+
+void ParseShaderParameter(const VirtualFilesystem& vfs,
+                          const std::string& keyword, Tokenizer* tokenizer,
                           Q3Shader* shader) {
   std::string lower_keyword = keyword;
   std::transform(lower_keyword.begin(), lower_keyword.end(),
@@ -181,7 +202,8 @@ void ParseShaderParameter(const std::string& keyword, Tokenizer* tokenizer,
   } else if (lower_keyword == "q3map_surfacelight") {
     shader->q3map_surfacelight = std::stof(tokenizer->Next());
   } else if (lower_keyword == "q3map_lightimage") {
-    shader->q3map_lightimage = tokenizer->Next();
+    std::string path_str = tokenizer->Next();
+    shader->q3map_lightimage = vfs.mount_point / path_str;
   } else if (lower_keyword == "q3map_sunlight") {
     // ignore
   } else if (lower_keyword == "q3map_sunmangle") {
@@ -275,6 +297,26 @@ std::optional<Q3TextureLayer> ParseShaderStages(const VirtualFilesystem& vfs,
       } else {
         LOG(WARNING) << "Unknown tcmod operation: " << tcmod_op;
       }
+    } else if (keyword == "blendfunc") {
+      std::string arg1 = tokenizer->Next();
+      std::string lower_arg1 = arg1;
+      std::transform(lower_arg1.begin(), lower_arg1.end(), lower_arg1.begin(),
+                     ::tolower);
+
+      if (lower_arg1 == "add") {
+        result.blend_src = BlendFunc::ONE;
+        result.blend_dst = BlendFunc::ONE;
+      } else if (lower_arg1 == "filter") {
+        result.blend_src = BlendFunc::DST_COLOR;
+        result.blend_dst = BlendFunc::ZERO;
+      } else if (lower_arg1 == "blend") {
+        result.blend_src = BlendFunc::SRC_ALPHA;
+        result.blend_dst = BlendFunc::ONE_MINUS_SRC_ALPHA;
+      } else {
+        // Explicit blendfunc <src> <dst>
+        result.blend_src = ParseBlendFunc(arg1);
+        result.blend_dst = ParseBlendFunc(tokenizer->Next());
+      }
     }
   }
 
@@ -320,6 +362,18 @@ void PruneInvalidTextureLayers(Q3Shader* shader) {
     }
     it->path = *found_path;
     ++it;
+  }
+
+  if (shader->q3map_lightimage) {
+    auto found = FindTexturePath(*shader->q3map_lightimage);
+    if (!found) {
+      DLOG(WARNING) << "Shader " << shader->name
+                    << " has missing q3map_lightimage "
+                    << *shader->q3map_lightimage;
+      shader->q3map_lightimage = std::nullopt;
+    } else {
+      shader->q3map_lightimage = *found;
+    }
   }
 }
 
@@ -396,7 +450,7 @@ std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScript(
         }
       } else {
         // Shader parameter.
-        ParseShaderParameter(token, &tokenizer, &shader);
+        ParseShaderParameter(vfs, token, &tokenizer, &shader);
       }
     }
 

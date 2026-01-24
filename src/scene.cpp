@@ -126,6 +126,9 @@ Scene AssembleBSPObjects(
 
     // Emission
     mat.emission_intensity = bsp_mat.q3map_surfacelight;
+    if (bsp_mat.q3map_lightimage) {
+      mat.emission.file_path = *bsp_mat.q3map_lightimage;
+    }
 
     scene.materials[id] = std::move(mat);
 
