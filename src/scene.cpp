@@ -126,6 +126,11 @@ Scene AssembleBSPObjects(
 
     // Emission
     mat.emission_intensity = bsp_mat.q3map_surfacelight;
+    if (bsp_mat.q3map_lightimage) {
+      mat.emission.file_path = *bsp_mat.q3map_lightimage;
+    } else if (mat.emission_intensity > 0.0f) {
+      mat.emission = mat.albedo;
+    }
 
     scene.materials[id] = std::move(mat);
 

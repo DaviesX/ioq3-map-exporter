@@ -57,16 +57,32 @@ struct Q3TCModStretch {
 
 using Q3TCModTransform = Eigen::Matrix<float, 2, 3>;  // Affine transform.
 
+enum class BlendFunc {
+  ZERO,
+  ONE,
+  DST_COLOR,
+  ONE_MINUS_DST_COLOR,
+  SRC_ALPHA,
+  ONE_MINUS_SRC_ALPHA,
+  DST_ALPHA,
+  ONE_MINUS_DST_ALPHA,
+  SRC_COLOR,
+  ONE_MINUS_SRC_COLOR,
+};
+
 struct Q3TextureLayer {
   std::filesystem::path path;
   std::variant<Q3TCModNoOp, Q3TCModScale, Q3TCModScroll, Q3TCModRotate,
                Q3TCModTurb, Q3TCModStretch, Q3TCModTransform>
       tcmod = Q3TCModNoOp{};
 
-  // TODO: Add blending mode, etc.
+  // Blending
+  BlendFunc blend_src = BlendFunc::ONE;
+  BlendFunc blend_dst = BlendFunc::ZERO;
 
   bool operator==(const Q3TextureLayer& other) const {
-    return path == other.path;
+    return path == other.path && blend_src == other.blend_src &&
+           blend_dst == other.blend_dst;
   }
 };
 
@@ -86,7 +102,9 @@ struct Q3Shader {
 
   // Emissive (from q3map_surfacelight and q3map_lightimage)
   float q3map_surfacelight = 0.0f;
-  std::string q3map_lightimage;
+
+  // If present, this texture is used for light color/emission.
+  std::optional<std::filesystem::path> q3map_lightimage;
 
   // Texture layers
   std::vector<Q3TextureLayer> texture_layers;

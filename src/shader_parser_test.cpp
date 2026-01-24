@@ -62,6 +62,7 @@ TEST_F(ShaderParserTest, ListQ3ShaderFindsFiles) {
 
 TEST_F(ShaderParserTest, ParseShaderSimple) {
   CreateFile("textures/common/base.tga", "");
+  CreateFile("textures/common/glow.tga", "");
   CreateShaderFile("simple.shader", R"(
 textures/common/simple
 {
@@ -81,10 +82,11 @@ textures/common/simple
   const auto& shader = shaders["textures/common/simple"];
   EXPECT_EQ(shader.name, "textures/common/simple");
   EXPECT_FLOAT_EQ(shader.q3map_surfacelight, 100.0f);
-  EXPECT_EQ(shader.q3map_lightimage, "textures/common/glow.tga");
+  ASSERT_TRUE(shader.q3map_lightimage.has_value());
+  EXPECT_EQ(*shader.q3map_lightimage, temp_dir_ / "textures/common/glow.tga");
   EXPECT_THAT(shader.texture_layers,
-              ElementsAre(Q3TextureLayer{
-                  .path = "/tmp/shader_parser_test/textures/common/base.tga"}));
+              ElementsAre(Q3TextureLayer{.path = temp_dir_ /
+                                                 "textures/common/base.tga"}));
 }
 
 TEST_F(ShaderParserTest, ParseShaderSun) {
@@ -128,6 +130,48 @@ textures/s2
   ASSERT_EQ(shaders.size(), 2);
   EXPECT_FLOAT_EQ(shaders["textures/s1"].q3map_surfacelight, 50.0f);
   EXPECT_FLOAT_EQ(shaders["textures/s2"].q3map_surfacelight, 150.0f);
+}
+
+TEST_F(ShaderParserTest, ParseShaderBlending) {
+  CreateFile("textures/b1.tga", "");
+  CreateFile("textures/b2.tga", "");
+  CreateFile("textures/b3.tga", "");
+
+  CreateShaderFile("blend.shader", R"(
+textures/blend
+{
+    {
+        map textures/b1.tga
+        blendfunc add
+    }
+    {
+        map textures/b2.tga
+        blendfunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA
+    }
+    {
+        map textures/b3.tga
+        blendfunc filter
+    }
+}
+)");
+
+  auto files = ListQ3ShaderScripts(*vfs_);
+  auto shaders = ParseShaderScripts(*vfs_, files);
+  const auto& shader = shaders["textures/blend"];
+
+  ASSERT_EQ(shader.texture_layers.size(), 3);
+
+  // Layer 1: add -> ONE, ONE
+  EXPECT_EQ(shader.texture_layers[0].blend_src, BlendFunc::ONE);
+  EXPECT_EQ(shader.texture_layers[0].blend_dst, BlendFunc::ONE);
+
+  // Layer 2: Explicit
+  EXPECT_EQ(shader.texture_layers[1].blend_src, BlendFunc::SRC_ALPHA);
+  EXPECT_EQ(shader.texture_layers[1].blend_dst, BlendFunc::ONE_MINUS_SRC_ALPHA);
+
+  // Layer 3: filter -> DST_COLOR, ZERO
+  EXPECT_EQ(shader.texture_layers[2].blend_src, BlendFunc::DST_COLOR);
+  EXPECT_EQ(shader.texture_layers[2].blend_dst, BlendFunc::ZERO);
 }
 
 }  // namespace

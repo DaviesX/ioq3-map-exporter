@@ -27,6 +27,11 @@ struct Material {
   // Albedo / Transparency
   Texture albedo;
 
+  // Emission Texture
+  // If the shader provides a q3map_lightimage, it is used here.
+  // Otherwise, if the material is emissive, we might reuse the albedo.
+  Texture emission;
+
   // Emission (for Area Lights).
   float emission_intensity = 0.0f;
 };
