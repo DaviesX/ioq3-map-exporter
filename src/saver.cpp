@@ -64,6 +64,11 @@ std::optional<int> AddOrReuseTexture(
   // Copy the file to the same directory as the output file.
   // We use the filename as the relative URI in the glTF.
   std::filesystem::path filename = from_uri.filename();
+  if (from_uri.has_parent_path() && from_uri.parent_path().has_filename()) {
+    std::string new_name =
+        from_uri.parent_path().filename().string() + "@" + filename.string();
+    filename = std::filesystem::path(new_name);
+  }
   std::filesystem::path destination = output_dir / filename;
 
   std::string uri_key = filename.string();
@@ -75,9 +80,12 @@ std::optional<int> AddOrReuseTexture(
   try {
     // to_uri is usually unique, but just in case we have a collision we
     // will overwrite the file.
-    std::filesystem::copy_file(
-        from_uri, destination,
-        std::filesystem::copy_options::overwrite_existing);
+    if (!std::filesystem::exists(destination) ||
+        !std::filesystem::equivalent(from_uri, destination)) {
+      std::filesystem::copy_file(
+          from_uri, destination,
+          std::filesystem::copy_options::overwrite_existing);
+    }
   } catch (const std::filesystem::filesystem_error& e) {
     LOG(ERROR) << "Failed to copy file from " << from_uri << " to "
                << destination << ". Cause: " << e.what();
@@ -129,10 +137,14 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
       // 1. Set Emissive Factor (White)
       gmat.emissiveFactor = {1.0, 1.0, 1.0};
 
-      // 2. Reuse Albedo as Emissive Texture
-      if (gmat.pbrMetallicRoughness.baseColorTexture.index != -1) {
-        gmat.emissiveTexture.index =
-            gmat.pbrMetallicRoughness.baseColorTexture.index;
+      // 2. Use Emission Texture
+      if (!mat.emission.file_path.empty()) {
+        auto texture_index =
+            AddOrReuseTexture(mat.emission.file_path, path.parent_path(),
+                              &model, &texture_allocations);
+        if (texture_index.has_value()) {
+          gmat.emissiveTexture.index = *texture_index;
+        }
       }
 
       // 3. Use KHR_materials_emissive_strength for high intensity

@@ -145,7 +145,7 @@ TEST(SaverTest, SaveSceneWithTexture) {
 
   // Check texture copy
   std::filesystem::path copied_tex_path =
-      output_gltf.parent_path() / "test_albedo.png";
+      output_gltf.parent_path() / "source@test_albedo.png";
   EXPECT_TRUE(std::filesystem::exists(copied_tex_path));
 
   // Check bin file (External buffers)
@@ -178,7 +178,7 @@ TEST(SaverTest, SaveSceneWithTexture) {
   ASSERT_GE(source_index, 0);
   ASSERT_LT(source_index, model.images.size());
 
-  EXPECT_EQ(model.images[source_index].uri, "test_albedo.png");
+  EXPECT_EQ(model.images[source_index].uri, "source@test_albedo.png");
 
   // Cleanup
   std::filesystem::remove_all(temp_dir);
@@ -302,6 +302,14 @@ TEST(SaverTest, SaveAreaLightWithEmissiveMaterial) {
   std::filesystem::create_directories(temp_dir);
   std::filesystem::path output_path = temp_dir / "area.gltf";
 
+  // Create explicit emission texture
+  std::filesystem::path emission_tex = temp_dir / "emission.png";
+  {
+    unsigned char pixels[] = {0, 255, 0};  // Green
+    stbi_write_png(emission_tex.string().c_str(), 1, 1, 3, pixels, 3);
+  }
+  scene.materials[0].emission.file_path = emission_tex;
+
   ASSERT_TRUE(SaveScene(scene, output_path));
 
   // Load back
@@ -319,6 +327,12 @@ TEST(SaverTest, SaveAreaLightWithEmissiveMaterial) {
   EXPECT_DOUBLE_EQ(gmat.emissiveFactor[0], 1.0);
   EXPECT_DOUBLE_EQ(gmat.emissiveFactor[1], 1.0);
   EXPECT_DOUBLE_EQ(gmat.emissiveFactor[2], 1.0);
+
+  // Check Emissive Texture
+  ASSERT_GE(gmat.emissiveTexture.index, 0);
+  const auto& em_tex = model.textures[gmat.emissiveTexture.index];
+  const auto& em_img = model.images[em_tex.source];
+  EXPECT_EQ(em_img.uri, "area_light_test@emission.png");
 
   // Check Extension
   // We expect KHR_materials_emissive_strength because intensity is 5.0
