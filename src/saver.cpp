@@ -12,7 +12,8 @@
 namespace ioq3_map {
 namespace {
 
-const float kLightIntensityScale = 1.0f;
+const float kAreaLightIntensityScale = 1.0f;
+const float kPunctualLightIntensityScale = 100.0f;
 
 // Helpers for buffer management
 void AddBufferView(const void* data, size_t size, size_t stride, int target,
@@ -157,7 +158,7 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
 
       tinygltf::Value::Object ext_obj;
       ext_obj["emissiveStrength"] = tinygltf::Value(
-          double(mat.emission_intensity * kLightIntensityScale));
+          double(mat.emission_intensity * kAreaLightIntensityScale));
       gmat.extensions["KHR_materials_emissive_strength"] =
           tinygltf::Value(ext_obj);
     }
@@ -324,8 +325,8 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
       color_vec.push_back(tinygltf::Value(double(light.color.z())));
       light_obj["color"] = tinygltf::Value(color_vec);
 
-      light_obj["intensity"] =
-          tinygltf::Value(double(light.intensity * kLightIntensityScale));
+      light_obj["intensity"] = tinygltf::Value(
+          double(light.intensity * kPunctualLightIntensityScale));
 
       std::string type_str;
       if (light.type == Light::Type::Directional) {
