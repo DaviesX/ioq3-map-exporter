@@ -159,7 +159,7 @@ Q3WaveType GetWaveType(const std::string& wave_func) {
   return Q3WaveType::NONE;
 }
 
-BlendFunc ParseBlendFunc(const std::string& func_name) {
+std::optional<BlendFunc> ParseBlendFunc(const std::string& func_name) {
   std::string f = func_name;
   std::transform(f.begin(), f.end(), f.begin(), ::tolower);
 
@@ -176,7 +176,7 @@ BlendFunc ParseBlendFunc(const std::string& func_name) {
 
   // Defaults to One/Zero if unknown, or maybe we should log?
   // Let's assume ONE for now if invalid, but usually parser should handle this.
-  return BlendFunc::ONE;
+  return std::nullopt;
 }
 
 void ParseShaderParameter(const VirtualFilesystem& vfs,
@@ -314,8 +314,20 @@ std::optional<Q3TextureLayer> ParseShaderStages(const VirtualFilesystem& vfs,
         result.blend_dst = BlendFunc::ONE_MINUS_SRC_ALPHA;
       } else {
         // Explicit blendfunc <src> <dst>
-        result.blend_src = ParseBlendFunc(arg1);
-        result.blend_dst = ParseBlendFunc(tokenizer->Next());
+        auto op1 = ParseBlendFunc(arg1);
+        if (!op1) {
+          DLOG(ERROR) << "Invalid blendfunc source: " << arg1;
+          continue;
+        }
+        result.blend_src = op1.value();
+
+        auto arg2 = tokenizer->Next();
+        auto op2 = ParseBlendFunc(arg2);
+        if (!op2) {
+          DLOG(ERROR) << "Invalid blendfunc destination: " << arg2;
+          continue;
+        }
+        result.blend_dst = op2.value();
       }
     }
   }
@@ -355,8 +367,8 @@ void PruneInvalidTextureLayers(Q3Shader* shader) {
 
     auto found_path = FindTexturePath(it->path);
     if (!found_path) {
-      DLOG(WARNING) << "Shader " << shader->name << " has missing texture "
-                    << it->path;
+      // DLOG(WARNING) << "Shader " << shader->name << " has missing texture "
+      //               << it->path;
       it = shader->texture_layers.erase(it);
       continue;
     }
@@ -367,9 +379,9 @@ void PruneInvalidTextureLayers(Q3Shader* shader) {
   if (shader->q3map_lightimage) {
     auto found = FindTexturePath(*shader->q3map_lightimage);
     if (!found) {
-      DLOG(WARNING) << "Shader " << shader->name
-                    << " has missing q3map_lightimage "
-                    << *shader->q3map_lightimage;
+      // DLOG(WARNING) << "Shader " << shader->name
+      //               << " has missing q3map_lightimage "
+      //               << *shader->q3map_lightimage;
       shader->q3map_lightimage = std::nullopt;
     } else {
       shader->q3map_lightimage = *found;
@@ -455,7 +467,7 @@ std::unordered_map<Q3ShaderName, Q3Shader> ParseShaderScript(
     }
 
     PruneInvalidTextureLayers(&shader);
-    result.emplace(shader.name, std::move(shader));
+    result.insert_or_assign(shader.name, std::move(shader));
   }
 
   return result;
