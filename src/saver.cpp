@@ -124,6 +124,10 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
     tinygltf::Material gmat;
     gmat.name = mat.name;
 
+    // Populate PBR
+    gmat.pbrMetallicRoughness.metallicFactor = 0.;
+    gmat.pbrMetallicRoughness.roughnessFactor = 1.;
+
     // Handle Albedo Texture
     if (!mat.albedo.file_path.empty()) {
       auto texture_index =
