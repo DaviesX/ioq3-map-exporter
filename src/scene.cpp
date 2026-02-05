@@ -8,6 +8,7 @@
 
 #include "bsp.h"
 #include "bsp_geometry.h"
+#include "shader_parser.h"
 #include "triangulation.h"
 
 namespace ioq3_map {
@@ -101,7 +102,13 @@ Scene AssembleBSPObjects(
   }
 
   // 2. Process Materials & Sun (Shader fallback)
-  for (const auto& [id, bsp_mat] : bsp_materials) {
+  for (const auto& [texture_index, bsp_mat] : bsp_materials) {
+    if (bsp_mat.surface_flags & SURF_NODRAW ||
+        bsp_mat.surface_flags & SURF_SKY) {
+      // TODO: Support sky.
+      continue;
+    }
+
     Material mat;
     mat.name = bsp_mat.name;
 
@@ -126,11 +133,16 @@ Scene AssembleBSPObjects(
 
     // Emission
     mat.emission_intensity = bsp_mat.q3map_surfacelight;
-    if (bsp_mat.q3map_lightimage) {
-      mat.emission.file_path = *bsp_mat.q3map_lightimage;
+    if (mat.emission_intensity > 0.f) {
+      if (bsp_mat.q3map_lightimage) {
+        mat.emission.file_path = *bsp_mat.q3map_lightimage;
+      } else {
+        // Use albedo as a fallback.
+        mat.emission.file_path = mat.albedo.file_path;
+      }
     }
 
-    scene.materials[id] = std::move(mat);
+    scene.materials.emplace(texture_index, std::move(mat));
 
     // Sun check
     if (bsp_mat.q3map_sun_intensity > 0.0f) {
@@ -178,6 +190,13 @@ Scene AssembleBSPObjects(
 
   // 3. Process Geometries
   for (const auto& [surface_idx, geo] : bsp_geometries) {
+    auto mat_it = scene.materials.find(geo.texture_index);
+    if (mat_it == scene.materials.end()) {
+      continue;
+    }
+    const auto& mat = mat_it->second;
+
+    // Populate geometry.
     Geometry out_geo;
     out_geo.material_id = geo.texture_index;
     out_geo.transform = Eigen::Affine3f::Identity();
@@ -201,13 +220,11 @@ Scene AssembleBSPObjects(
 
     scene.geometries.emplace(surface_idx, std::move(out_geo));
 
-    // 4. Check for Area Light (Emissive Material)
-    auto mat_it = scene.materials.find(geo.texture_index);
-    if (mat_it != scene.materials.end() &&
-        mat_it->second.emission_intensity > 0.0f) {
+    //  Check for Area Light (Emissive Material)
+    if (mat.emission_intensity > 0.0f) {
       Light area_light;
       area_light.type = Light::Type::Area;
-      area_light.intensity = mat_it->second.emission_intensity;
+      area_light.intensity = mat.emission_intensity;
       area_light.material_id = geo.texture_index;
       area_light.geometry_index = surface_idx;
       area_light.color =

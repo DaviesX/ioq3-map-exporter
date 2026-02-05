@@ -12,7 +12,7 @@
 namespace ioq3_map {
 namespace {
 
-const float kAreaLightIntensityScale = 1.0f;
+const float kAreaLightIntensityScale = .5f;
 const float kPunctualLightIntensityScale = 100.0f;
 
 // Helpers for buffer management
@@ -318,7 +318,9 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
 
     int light_idx = 0;
     for (const auto& light : scene.lights) {
-      if (light.type == Light::Type::Area) continue;
+      if (light.type == Light::Type::Area ||
+          light.type != Light::Type::Directional)
+        continue;
 
       tinygltf::Value::Object light_obj;
 
