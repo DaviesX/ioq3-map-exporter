@@ -339,7 +339,8 @@ TEST(SaverTest, SaveAreaLightWithEmissiveMaterial) {
   auto ext_it = gmat.extensions.find("KHR_materials_emissive_strength");
   ASSERT_NE(ext_it, gmat.extensions.end());
   EXPECT_TRUE(ext_it->second.Has("emissiveStrength"));
-  EXPECT_DOUBLE_EQ(ext_it->second.Get("emissiveStrength").Get<double>(), 5.0);
+  EXPECT_DOUBLE_EQ(ext_it->second.Get("emissiveStrength").Get<double>(),
+                   5.0 / 2.0);
 
   // Check that extension is in extensionsUsed
   bool has_ext = false;

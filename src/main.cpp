@@ -20,6 +20,9 @@ DEFINE_string(base_path, "", "Path to Quake 3 .pk3 archives");
 DEFINE_string(map, "", "Map name (e.g., q3dm1)");
 DEFINE_string(output, "", "Output directory");
 
+DEFINE_bool(collect_point_or_spot_lights, false,
+            "Collect point and spot lights from entities");
+
 int main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   FLAGS_logtostderr = 1;
@@ -99,7 +102,8 @@ int main(int argc, char* argv[]) {
   // 8. Assemble Scene
   LOG(INFO) << "Assembling Scene...";
   auto scene = ioq3_map::AssembleBSPObjects(*bsp, bsp_geometries, bsp_materials,
-                                            bsp_entities);
+                                            bsp_entities,
+                                            FLAGS_collect_point_or_spot_lights);
   LOG(INFO) << "Scene Assembled. Total Geometries: " << scene.geometries.size();
   LOG(INFO) << "Total Materials: " << scene.materials.size();
   LOG(INFO) << "Total Lights: " << scene.lights.size();

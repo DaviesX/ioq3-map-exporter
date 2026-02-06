@@ -18,6 +18,7 @@ namespace ioq3_map {
 // --- Texture ---
 struct Texture {
   std::filesystem::path file_path;
+  bool black_as_alpha = false;
 };
 
 // --- Material ---
@@ -86,7 +87,7 @@ Scene AssembleBSPObjects(
     const BSP& bsp,
     const std::unordered_map<BSPSurfaceIndex, BSPGeometry>& bsp_geometries,
     const std::unordered_map<BSPTextureIndex, BSPMaterial>& bsp_materials,
-    const std::vector<Entity>& bsp_entities);
+    const std::vector<Entity>& bsp_entities, bool collect_point_or_spot_lights);
 
 }  // namespace ioq3_map
 
