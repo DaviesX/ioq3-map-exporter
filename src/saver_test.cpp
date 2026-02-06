@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 
 #include "scene.h"
 #include "stb_image.h"
@@ -145,20 +146,35 @@ TEST(SaverTest, SaveSceneWithTexture) {
   ASSERT_TRUE(std::filesystem::exists(output_gltf));
 
   // Check texture copy
-  std::filesystem::path copied_tex_path =
-      output_gltf.parent_path() / "source@test_albedo.png";
-  EXPECT_TRUE(std::filesystem::exists(copied_tex_path));
+  // Expected structure: output/source@test_albedo/original_diffuse.png
+  std::filesystem::path folder_name = "source@test_albedo";
+  std::filesystem::path texture_dir = output_gltf.parent_path() / folder_name;
+
+  EXPECT_TRUE(
+      std::filesystem::exists(texture_dir / "source@test_albedo_diffuse.png"));
+  EXPECT_TRUE(
+      std::filesystem::exists(texture_dir / "source@test_albedo_albedo.png"));
+  EXPECT_TRUE(
+      std::filesystem::exists(texture_dir / "source@test_albedo_normal.png"));
+  EXPECT_TRUE(
+      std::filesystem::exists(texture_dir / "source@test_albedo_orm.png"));
 
   // Check bin file (External buffers)
   std::filesystem::path bin_path = output_gltf.parent_path() / "scene.bin";
-  // The current implementation might NOT create scene.bin if it uses multiple
-  // buffers without a single top-level binary blob, OR if tinygltf is
-  // configured differently. Our implementation uses AddBufferView with
-  // model->buffers[0], so it should be fine. However, tinygltf
-  // WriteGltfSceneToFile behavior depends on flags. We passed false for
-  // embed_xyz, so it should write external files.
-  // EXPECT_TRUE(std::filesystem::exists(bin_path)); // Might depend on naming
-  // convention
+  // EXPECT_TRUE(std::filesystem::exists(bin_path));
+
+  // Check raw JSON content to verify URI is not stripped by writer
+  std::ifstream f(output_gltf);
+  std::stringstream buffer;
+  buffer << f.rdbuf();
+  std::string gltf_json = buffer.str();
+  // We look for "source@test_albedo/source@test_albedo_albedo.png"
+  std::string expected_uri =
+      (folder_name / (folder_name.string() + "_albedo.png")).string();
+  EXPECT_NE(gltf_json.find(expected_uri), std::string::npos)
+      << "glTF JSON should contain full relative path: " << expected_uri
+      << "\nContent:\n"
+      << gltf_json;
 
   // Load back and verify
   tinygltf::Model model;
@@ -170,16 +186,32 @@ TEST(SaverTest, SaveSceneWithTexture) {
 
   ASSERT_EQ(model.materials.size(), 1);
   EXPECT_EQ(model.materials[0].name, "TestMat");
+
+  // Verify links to placeholders
+  // Base Color -> albedo.png
   int tex_index =
       model.materials[0].pbrMetallicRoughness.baseColorTexture.index;
   ASSERT_GE(tex_index, 0);
   ASSERT_LT(tex_index, model.textures.size());
-
   int source_index = model.textures[tex_index].source;
   ASSERT_GE(source_index, 0);
-  ASSERT_LT(source_index, model.images.size());
+  EXPECT_EQ(model.images[source_index].uri,
+            (folder_name / (folder_name.string() + "_albedo.png")).string());
 
-  EXPECT_EQ(model.images[source_index].uri, "source@test_albedo.png");
+  // MetallicRoughness -> orm.png
+  tex_index =
+      model.materials[0].pbrMetallicRoughness.metallicRoughnessTexture.index;
+  ASSERT_GE(tex_index, 0);
+  source_index = model.textures[tex_index].source;
+  EXPECT_EQ(model.images[source_index].uri,
+            (folder_name / (folder_name.string() + "_orm.png")).string());
+
+  // Normal -> normal.png
+  tex_index = model.materials[0].normalTexture.index;
+  ASSERT_GE(tex_index, 0);
+  source_index = model.textures[tex_index].source;
+  EXPECT_EQ(model.images[source_index].uri,
+            (folder_name / (folder_name.string() + "_normal.png")).string());
 
   // Cleanup
   std::filesystem::remove_all(temp_dir);
@@ -333,7 +365,10 @@ TEST(SaverTest, SaveAreaLightWithEmissiveMaterial) {
   ASSERT_GE(gmat.emissiveTexture.index, 0);
   const auto& em_tex = model.textures[gmat.emissiveTexture.index];
   const auto& em_img = model.images[em_tex.source];
-  EXPECT_EQ(em_img.uri, "area_light_test@emission.png");
+  // Expect folder structure
+  std::filesystem::path folder_name = "area_light_test@emission";
+  EXPECT_EQ(em_img.uri,
+            (folder_name / (folder_name.string() + "_emissive.png")).string());
 
   // Check Extension
   // We expect KHR_materials_emissive_strength because intensity is 5.0
@@ -396,8 +431,11 @@ TEST(SaverTest, SaveWithBlackAlpha) {
 
   // 4. Verify output file existence and extension
   // The saver should rename the texture to .png
-  std::filesystem::path expected_tex =
-      output_path.parent_path() / "black_alpha_test@test.png";
+  // 4. Verify output file existence and extension
+  // The saver should create a folder and place original_diffuse.png inside
+  std::filesystem::path folder_name = "black_alpha_test@test";
+  std::filesystem::path expected_tex = output_path.parent_path() / folder_name /
+                                       (folder_name.string() + "_diffuse.png");
   ASSERT_TRUE(std::filesystem::exists(expected_tex))
       << "Expected " << expected_tex << " to exist";
 
