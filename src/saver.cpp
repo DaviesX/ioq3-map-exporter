@@ -13,6 +13,8 @@
 #include <stb_image.h>
 #include <stb_image_write.h>
 
+#include <fstream>
+
 namespace ioq3_map {
 namespace {
 
@@ -63,79 +65,56 @@ int AddAccessor(int buffer_view, int component_type, size_t count, int type,
   return static_cast<int>(model->accessors.size() - 1);
 }
 
-std::optional<int> AddOrReuseTexture(
-    const std::filesystem::path& from_uri,
-    const std::filesystem::path& output_dir, tinygltf::Model* model,
-    std::unordered_map<std::string, int>* texture_allocations,
-    bool black_as_alpha) {
-  // Determine filename and extension
-  std::filesystem::path filename = from_uri.filename();
-  if (black_as_alpha) {
-    filename.replace_extension(".png");
-  }
+void CreateSolidColorPNG(const std::filesystem::path& out_path, int r, int g,
+                         int b) {
+  if (std::filesystem::exists(out_path)) return;
+  unsigned char data[4] = {static_cast<unsigned char>(r),
+                           static_cast<unsigned char>(g),
+                           static_cast<unsigned char>(b), 255};
+  stbi_write_png(out_path.string().c_str(), 1, 1, 4, data, 4);
+}
 
-  if (from_uri.has_parent_path() && from_uri.parent_path().has_filename()) {
-    std::string new_name =
-        from_uri.parent_path().filename().string() + "@" + filename.string();
-    filename = std::filesystem::path(new_name);
-  }
-  std::filesystem::path destination = output_dir / filename;
-
-  std::string uri_key = filename.string();
-  auto texture_index_it = texture_allocations->find(uri_key);
-  if (texture_index_it != texture_allocations->end()) {
-    return texture_index_it->second;
-  }
-
-  // Handle File Operation
-  try {
+void ConvertToPNG(const std::filesystem::path& src,
+                  const std::filesystem::path& dst, bool black_as_alpha) {
+  if (std::filesystem::exists(dst)) return;
+  int w, h, c;
+  unsigned char* data = stbi_load(src.string().c_str(), &w, &h, &c, 4);
+  if (data) {
     if (black_as_alpha) {
-      // Load, process, and save as PNG
-      int w, h, c;
-      // Force 4 channels (RGBA)
-      unsigned char* data = stbi_load(from_uri.string().c_str(), &w, &h, &c, 4);
-      if (data) {
-        // Set alpha based on max(r, g, b)
-        for (int i = 0; i < w * h; ++i) {
-          unsigned char r = data[4 * i + 0];
-          unsigned char g = data[4 * i + 1];
-          unsigned char b = data[4 * i + 2];
-          unsigned char max_val = std::max({r, g, b});
-          data[4 * i + 3] = max_val;
-        }
-
-        stbi_write_png(destination.string().c_str(), w, h, 4, data, w * 4);
-        stbi_image_free(data);
-      } else {
-        LOG(ERROR) << "Failed to load image for alpha processing: " << from_uri;
-        return std::nullopt;
-      }
-    } else {
-      // Direct Copy
-      if (!std::filesystem::exists(destination) ||
-          !std::filesystem::equivalent(from_uri, destination)) {
-        std::filesystem::copy_file(
-            from_uri, destination,
-            std::filesystem::copy_options::overwrite_existing);
+      for (int i = 0; i < w * h; ++i) {
+        unsigned char r = data[4 * i + 0];
+        unsigned char g = data[4 * i + 1];
+        unsigned char b = data[4 * i + 2];
+        unsigned char max_val = std::max({r, g, b});
+        data[4 * i + 3] = max_val;
       }
     }
-  } catch (const std::filesystem::filesystem_error& e) {
-    LOG(ERROR) << "Failed to process texture " << from_uri << " -> "
-               << destination << ". Cause: " << e.what();
-    return std::nullopt;
+    stbi_write_png(dst.string().c_str(), w, h, 4, data, w * 4);
+    stbi_image_free(data);
+  } else {
+    LOG(ERROR) << "Failed to load texture for conversion: " << src;
+  }
+}
+
+int GetOrAddTexture(tinygltf::Model* model,
+                    std::unordered_map<std::string, int>* texture_allocations,
+                    const std::string& uri) {
+  if (auto it = texture_allocations->find(uri);
+      it != texture_allocations->end()) {
+    return it->second;
   }
 
   tinygltf::Image img;
-  img.uri = uri_key;
+  img.uri = uri;
   model->images.push_back(img);
 
   tinygltf::Texture tex;
   tex.source = static_cast<int>(model->images.size() - 1);
   model->textures.push_back(tex);
 
-  texture_index_it =
-      texture_allocations->emplace(uri_key, model->textures.size() - 1).first;
-  return texture_index_it->second;
+  int idx = static_cast<int>(model->textures.size() - 1);
+  (*texture_allocations)[uri] = idx;
+  return idx;
 }
 
 }  // namespace
@@ -145,10 +124,13 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
   model.asset.generator = "ioq3-map-exporter";
   model.asset.version = "2.0";
 
-  // Texture Allocations: absolute path string -> glTF texture index
+  // Texture Allocations: uri string -> glTF texture index
   std::unordered_map<std::string, int> texture_allocations;
   // Material Mapping: BSPTextureIndex -> glTF Material Index
   std::unordered_map<BSPTextureIndex, int> bsp_to_gltf_material;
+
+  std::filesystem::path export_root = path.parent_path();
+  std::filesystem::create_directories(export_root);
 
   // 1. Export Materials
   for (const auto& [bsp_tex_idx, mat] : scene.materials) {
@@ -159,14 +141,57 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
     gmat.pbrMetallicRoughness.metallicFactor = 0.;
     gmat.pbrMetallicRoughness.roughnessFactor = 1.;
 
-    // Handle Albedo Texture
-    if (!mat.albedo.file_path.empty()) {
-      auto texture_index =
-          AddOrReuseTexture(mat.albedo.file_path, path.parent_path(), &model,
-                            &texture_allocations, mat.albedo.black_as_alpha);
-      if (texture_index.has_value()) {
-        gmat.pbrMetallicRoughness.baseColorTexture.index = *texture_index;
+    // Determine Folder Name
+    // Determine Folder Name
+    std::filesystem::path folder_name;
+    std::filesystem::path from_uri;
+
+    if (!mat.albedo.file_path.empty())
+      from_uri = mat.albedo.file_path;
+    else if (!mat.emission.file_path.empty())
+      from_uri = mat.emission.file_path;
+
+    if (!from_uri.empty()) {
+      if (from_uri.has_parent_path() && from_uri.parent_path().has_filename()) {
+        folder_name = from_uri.parent_path().filename().string() + "@" +
+                      from_uri.stem().string();
+      } else {
+        folder_name = from_uri.stem();
       }
+    } else {
+      folder_name = "material_" + std::to_string(bsp_tex_idx);
+    }
+
+    std::filesystem::path texture_dir = export_root / folder_name;
+    std::filesystem::create_directories(texture_dir);
+
+    // Handle Albedo
+    if (!mat.albedo.file_path.empty()) {
+      std::string diff_name = folder_name.string() + "_diffuse.png";
+      std::string albedo_name = folder_name.string() + "_albedo.png";
+      std::string normal_name = folder_name.string() + "_normal.png";
+      std::string orm_name = folder_name.string() + "_orm.png";
+
+      // Convert Original
+      ConvertToPNG(mat.albedo.file_path, texture_dir / diff_name,
+                   mat.albedo.black_as_alpha);
+
+      // Create Placeholders
+      CreateSolidColorPNG(texture_dir / albedo_name, 255, 0, 255);
+      CreateSolidColorPNG(texture_dir / normal_name, 128, 128, 255);
+      CreateSolidColorPNG(texture_dir / orm_name, 255, 255, 0);
+
+      // Link glTF to Placeholders
+      std::string albedo_uri = (folder_name / albedo_name).string();
+      std::string orm_uri = (folder_name / orm_name).string();
+      std::string normal_uri = (folder_name / normal_name).string();
+
+      gmat.pbrMetallicRoughness.baseColorTexture.index =
+          GetOrAddTexture(&model, &texture_allocations, albedo_uri);
+      gmat.pbrMetallicRoughness.metallicRoughnessTexture.index =
+          GetOrAddTexture(&model, &texture_allocations, orm_uri);
+      gmat.normalTexture.index =
+          GetOrAddTexture(&model, &texture_allocations, normal_uri);
     }
 
     // Handle Emission (Area Light)
@@ -176,15 +201,16 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
 
       // 2. Use Emission Texture
       if (!mat.emission.file_path.empty()) {
-        auto texture_index = AddOrReuseTexture(
-            mat.emission.file_path, path.parent_path(), &model,
-            &texture_allocations, mat.emission.black_as_alpha);
-        if (texture_index.has_value()) {
-          gmat.emissiveTexture.index = *texture_index;
-        }
+        std::string emissive_name = folder_name.string() + "_emissive.png";
+        ConvertToPNG(mat.emission.file_path, texture_dir / emissive_name,
+                     mat.emission.black_as_alpha);
+
+        std::string emissive_uri = (folder_name / emissive_name).string();
+        gmat.emissiveTexture.index =
+            GetOrAddTexture(&model, &texture_allocations, emissive_uri);
       }
 
-      // 3. Use KHR_materials_emissive_strength for high intensity
+      // 3. Use KHR_materials_emissive_strength
       if (std::find(model.extensionsUsed.begin(), model.extensionsUsed.end(),
                     "KHR_materials_emissive_strength") ==
           model.extensionsUsed.end()) {
@@ -450,12 +476,54 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
   model.scenes.push_back(gscene);
   model.defaultScene = 0;
 
+  model.defaultScene = 0;
+
+  // Manual Write to control URIs and Files and bypass TinyGLTF path stripping
+
+  // 1. Write Binary Buffer
+  if (!model.buffers.empty() && !model.buffers[0].data.empty()) {
+    std::string bin_filename = path.stem().string() + ".bin";
+    model.buffers[0].uri = bin_filename;
+
+    std::filesystem::path bin_path = path.parent_path() / bin_filename;
+    std::ofstream bin_file(bin_path, std::ios::binary);
+    if (bin_file) {
+      bin_file.write(
+          reinterpret_cast<const char*>(model.buffers[0].data.data()),
+          model.buffers[0].data.size());
+    }
+  }
+
+  // 2. Write glTF JSON
   tinygltf::TinyGLTF loader;
-  return loader.WriteGltfSceneToFile(&model, path.string(),
-                                     /*embed_images=*/false,
-                                     /*embed_textures=*/false,
-                                     /*embed_buffers=*/false,
-                                     /*embed_binary=*/false);
+  std::stringstream ss;
+  bool ret = loader.WriteGltfSceneToStream(&model, ss, false, false);
+  if (ret) {
+    std::string json_str = ss.str();
+
+    // Patch URIs because TinyGLTF might strip paths
+    for (const auto& img : model.images) {
+      if (img.uri.empty()) continue;
+      std::filesystem::path full_path = img.uri;
+      std::string base_name = full_path.filename().string();
+
+      // We look for "uri" : "base_name" and replace with "uri" : "full_uri"
+      // Note: tinygltf output usually doesn't have spaces around :
+      std::string search = "\"uri\":\"" + base_name + "\"";
+      std::string replace = "\"uri\":\"" + img.uri + "\"";
+
+      size_t pos = 0;
+      while ((pos = json_str.find(search, pos)) != std::string::npos) {
+        json_str.replace(pos, search.length(), replace);
+        pos += replace.length();
+      }
+    }
+
+    std::ofstream gltf_file(path);
+    gltf_file << json_str;
+    return true;
+  }
+  return false;
 }
 
 }  // namespace ioq3_map
