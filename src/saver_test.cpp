@@ -7,6 +7,7 @@
 #include <filesystem>
 
 #include "scene.h"
+#include "stb_image.h"
 #include "stb_image_write.h"
 
 namespace ioq3_map {
@@ -339,7 +340,8 @@ TEST(SaverTest, SaveAreaLightWithEmissiveMaterial) {
   auto ext_it = gmat.extensions.find("KHR_materials_emissive_strength");
   ASSERT_NE(ext_it, gmat.extensions.end());
   EXPECT_TRUE(ext_it->second.Has("emissiveStrength"));
-  EXPECT_DOUBLE_EQ(ext_it->second.Get("emissiveStrength").Get<double>(), 5.0);
+  EXPECT_DOUBLE_EQ(ext_it->second.Get("emissiveStrength").Get<double>(),
+                   5.0 / 2.0);
 
   // Check that extension is in extensionsUsed
   bool has_ext = false;
@@ -348,6 +350,78 @@ TEST(SaverTest, SaveAreaLightWithEmissiveMaterial) {
   }
   EXPECT_TRUE(has_ext);
 
+  std::filesystem::remove_all(temp_dir);
+}
+
+TEST(SaverTest, SaveWithBlackAlpha) {
+  // Setup temp directory
+  std::filesystem::path temp_dir =
+      std::filesystem::temp_directory_path() / "black_alpha_test";
+  std::filesystem::create_directories(temp_dir);
+
+  // 1. Create source texture (2x2)
+  // Pixels: Black (0,0,0), Red (255,0,0), Green (0,255,0), White (255,255,255)
+  // Expected Alpha: 0, 255, 255, 255
+  std::vector<unsigned char> pixels = {
+      0,   0,   0,   // Black
+      255, 0,   0,   // Red
+      0,   255, 0,   // Green
+      255, 255, 255  // White
+  };
+
+  std::filesystem::path source_tex =
+      temp_dir / "test.jpg";  // Pretend it's a JPG/TGA
+  // stbi_write_png is fine, we just need a file on disk.
+  stbi_write_png(source_tex.string().c_str(), 2, 2, 3, pixels.data(), 2 * 3);
+
+  // 2. Setup Scene
+  Scene scene;
+  Material mat;
+  mat.name = "TransparencyMat";
+  mat.albedo.file_path = source_tex;
+  mat.albedo.black_as_alpha = true;
+  scene.materials[0] = mat;
+
+  // Geometry
+  Geometry geo;
+  geo.vertices = {Eigen::Vector3f(0, 0, 0), Eigen::Vector3f(1, 0, 0),
+                  Eigen::Vector3f(0, 1, 0)};
+  geo.indices = {0, 1, 2};
+  geo.material_id = 0;
+  scene.geometries[0] = geo;
+
+  // 3. Save
+  std::filesystem::path output_path = temp_dir / "out.gltf";
+  ASSERT_TRUE(SaveScene(scene, output_path));
+
+  // 4. Verify output file existence and extension
+  // The saver should rename the texture to .png
+  std::filesystem::path expected_tex =
+      output_path.parent_path() / "black_alpha_test@test.png";
+  ASSERT_TRUE(std::filesystem::exists(expected_tex))
+      << "Expected " << expected_tex << " to exist";
+
+  // 5. Load and Verify Pixels
+  int w, h, c;
+  unsigned char* data = stbi_load(expected_tex.string().c_str(), &w, &h, &c, 4);
+  ASSERT_TRUE(data != nullptr);
+  ASSERT_EQ(w, 2);
+  ASSERT_EQ(h, 2);
+  ASSERT_EQ(c, 4);  // We requested 4 channels
+
+  // Pixel 0 (Black) -> Alpha should be 0
+  EXPECT_EQ(data[3], 0);
+
+  // Pixel 1 (Red) -> Alpha should be 255
+  EXPECT_EQ(data[4 + 3], 255);
+
+  // Pixel 2 (Green) -> Alpha 255
+  EXPECT_EQ(data[8 + 3], 255);
+
+  // Pixel 3 (White) -> Alpha 255
+  EXPECT_EQ(data[12 + 3], 255);
+
+  stbi_image_free(data);
   std::filesystem::remove_all(temp_dir);
 }
 

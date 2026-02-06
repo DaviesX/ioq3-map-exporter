@@ -10,6 +10,27 @@
 
 #include "archives.h"
 
+// Basic surface flags from surfaceflags.h
+#define SURF_NODAMAGE 0x1
+#define SURF_SLICK 0x2
+#define SURF_SKY 0x4
+#define SURF_LADDER 0x8
+#define SURF_NOIMPACT 0x10
+#define SURF_NOMARKS 0x20
+#define SURF_FLESH 0x40
+#define SURF_NODRAW 0x80
+#define SURF_HINT 0x100
+#define SURF_SKIP 0x200
+#define SURF_NOLIGHTMAP 0x400
+#define SURF_POINTLIGHT 0x800
+#define SURF_METALSTEPS 0x1000
+#define SURF_NOSTEPS 0x2000
+#define SURF_NONSOLID 0x4000
+#define SURF_LIGHTFILTER 0x8000
+#define SURF_ALPHASHADOW 0x10000
+#define SURF_NODLIGHT 0x20000
+#define SURF_DUST 0x40000
+
 namespace ioq3_map {
 
 enum class Q3WaveType {

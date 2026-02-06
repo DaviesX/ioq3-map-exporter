@@ -9,10 +9,14 @@
 #include <map>
 #include <unordered_map>
 
+// Include stb headers for image processing
+#include <stb_image.h>
+#include <stb_image_write.h>
+
 namespace ioq3_map {
 namespace {
 
-const float kAreaLightIntensityScale = 1.0f;
+const float kAreaLightIntensityScale = .5f;
 const float kPunctualLightIntensityScale = 100.0f;
 
 // Helpers for buffer management
@@ -62,10 +66,14 @@ int AddAccessor(int buffer_view, int component_type, size_t count, int type,
 std::optional<int> AddOrReuseTexture(
     const std::filesystem::path& from_uri,
     const std::filesystem::path& output_dir, tinygltf::Model* model,
-    std::unordered_map<std::string, int>* texture_allocations) {
-  // Copy the file to the same directory as the output file.
-  // We use the filename as the relative URI in the glTF.
+    std::unordered_map<std::string, int>* texture_allocations,
+    bool black_as_alpha) {
+  // Determine filename and extension
   std::filesystem::path filename = from_uri.filename();
+  if (black_as_alpha) {
+    filename.replace_extension(".png");
+  }
+
   if (from_uri.has_parent_path() && from_uri.parent_path().has_filename()) {
     std::string new_name =
         from_uri.parent_path().filename().string() + "@" + filename.string();
@@ -79,17 +87,40 @@ std::optional<int> AddOrReuseTexture(
     return texture_index_it->second;
   }
 
+  // Handle File Operation
   try {
-    // to_uri is usually unique, but just in case we have a collision we
-    // will overwrite the file.
-    if (!std::filesystem::exists(destination) ||
-        !std::filesystem::equivalent(from_uri, destination)) {
-      std::filesystem::copy_file(
-          from_uri, destination,
-          std::filesystem::copy_options::overwrite_existing);
+    if (black_as_alpha) {
+      // Load, process, and save as PNG
+      int w, h, c;
+      // Force 4 channels (RGBA)
+      unsigned char* data = stbi_load(from_uri.string().c_str(), &w, &h, &c, 4);
+      if (data) {
+        // Set alpha based on max(r, g, b)
+        for (int i = 0; i < w * h; ++i) {
+          unsigned char r = data[4 * i + 0];
+          unsigned char g = data[4 * i + 1];
+          unsigned char b = data[4 * i + 2];
+          unsigned char max_val = std::max({r, g, b});
+          data[4 * i + 3] = max_val;
+        }
+
+        stbi_write_png(destination.string().c_str(), w, h, 4, data, w * 4);
+        stbi_image_free(data);
+      } else {
+        LOG(ERROR) << "Failed to load image for alpha processing: " << from_uri;
+        return std::nullopt;
+      }
+    } else {
+      // Direct Copy
+      if (!std::filesystem::exists(destination) ||
+          !std::filesystem::equivalent(from_uri, destination)) {
+        std::filesystem::copy_file(
+            from_uri, destination,
+            std::filesystem::copy_options::overwrite_existing);
+      }
     }
   } catch (const std::filesystem::filesystem_error& e) {
-    LOG(ERROR) << "Failed to copy file from " << from_uri << " to "
+    LOG(ERROR) << "Failed to process texture " << from_uri << " -> "
                << destination << ". Cause: " << e.what();
     return std::nullopt;
   }
@@ -132,7 +163,7 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
     if (!mat.albedo.file_path.empty()) {
       auto texture_index =
           AddOrReuseTexture(mat.albedo.file_path, path.parent_path(), &model,
-                            &texture_allocations);
+                            &texture_allocations, mat.albedo.black_as_alpha);
       if (texture_index.has_value()) {
         gmat.pbrMetallicRoughness.baseColorTexture.index = *texture_index;
       }
@@ -145,9 +176,9 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
 
       // 2. Use Emission Texture
       if (!mat.emission.file_path.empty()) {
-        auto texture_index =
-            AddOrReuseTexture(mat.emission.file_path, path.parent_path(),
-                              &model, &texture_allocations);
+        auto texture_index = AddOrReuseTexture(
+            mat.emission.file_path, path.parent_path(), &model,
+            &texture_allocations, mat.emission.black_as_alpha);
         if (texture_index.has_value()) {
           gmat.emissiveTexture.index = *texture_index;
         }
@@ -318,7 +349,9 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
 
     int light_idx = 0;
     for (const auto& light : scene.lights) {
-      if (light.type == Light::Type::Area) continue;
+      if (light.type == Light::Type::Area) {
+        continue;
+      }
 
       tinygltf::Value::Object light_obj;
 

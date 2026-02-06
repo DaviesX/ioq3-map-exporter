@@ -50,7 +50,8 @@ TEST_F(SceneTest, AssembleBSPObjectsPlanarTransform) {
       .path = "./vfs_mount_point/textures/base_wall/concrete.tga"});
   materials_[0] = mat;
 
-  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_, entities_);
+  Scene scene =
+      AssembleBSPObjects(bsp_, geometries_, materials_, entities_, true);
 
   ASSERT_EQ(scene.geometries.size(), 1);
   const auto& out_geo = scene.geometries.at(0);
@@ -88,6 +89,7 @@ TEST_F(SceneTest, AssembleBSPObjectsPlanarTransform) {
 TEST_F(SceneTest, AssembleBSPObjectsExtractsSun) {
   BSPMaterial mat;
   mat.name = "textures/skies/sky_sun";
+  mat.surface_flags = SURF_SKY;
   mat.q3map_sun_intensity = 100.0f;
   mat.q3map_sun_color = Eigen::Vector3f(1.0f, 1.0f, 1.0f);
   mat.q3map_sun_direction = Eigen::Vector2f(90.0f, 45.0f);  // North, 45deg up
@@ -96,7 +98,8 @@ TEST_F(SceneTest, AssembleBSPObjectsExtractsSun) {
       Q3TextureLayer{.path = "textures/skies/sky_sun.tga"});
   materials_[0] = mat;
 
-  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_, entities_);
+  Scene scene =
+      AssembleBSPObjects(bsp_, geometries_, materials_, entities_, true);
 
   bool found_sun = false;
   for (const auto& l : scene.lights) {
@@ -144,7 +147,8 @@ TEST_F(SceneTest, AssembleBSPObjectsExtractsEntities) {
   e2.data = spot;
   entities_.push_back(e2);
 
-  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_, entities_);
+  Scene scene =
+      AssembleBSPObjects(bsp_, geometries_, materials_, entities_, true);
 
   EXPECT_GE(scene.lights.size(), 2);
 
