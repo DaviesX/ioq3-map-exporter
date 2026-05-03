@@ -39,6 +39,7 @@ struct Material {
   // Q3 texture layers for custom glTF extension
   std::vector<Q3TextureLayer> texture_layers;
   int surface_flags = 0;
+  Q3CullType cull = Q3CullType::FRONT;
 };
 
 // --- Geometry/Triangle Mesh ---

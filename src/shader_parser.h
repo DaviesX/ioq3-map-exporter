@@ -133,9 +133,18 @@ struct Q3TextureLayer {
   }
 };
 
+enum class Q3CullType {
+  FRONT,
+  BACK,
+  NONE
+};
+
 struct Q3Shader {
   // Original name specified in the shader script.
   Q3ShaderName name;
+
+  // Culling
+  Q3CullType cull = Q3CullType::FRONT;
 
   // Q3 flags
   int surface_flags = 0;

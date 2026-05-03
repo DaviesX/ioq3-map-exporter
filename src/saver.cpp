@@ -129,6 +129,9 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
   // Material Mapping: BSPTextureIndex -> glTF Material Index
   std::unordered_map<BSPTextureIndex, int> bsp_to_gltf_material;
 
+  bool used_sh_material_layers = false;
+  bool used_khr_emissive_strength = false;
+
   std::filesystem::path export_root = path.parent_path();
   std::filesystem::create_directories(export_root);
 
@@ -211,11 +214,7 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
       }
 
       // 3. Use KHR_materials_emissive_strength
-      if (std::find(model.extensionsUsed.begin(), model.extensionsUsed.end(),
-                    "KHR_materials_emissive_strength") ==
-          model.extensionsUsed.end()) {
-        model.extensionsUsed.push_back("KHR_materials_emissive_strength");
-      }
+      used_khr_emissive_strength = true;
 
       tinygltf::Value::Object ext_obj;
       ext_obj["emissiveStrength"] = tinygltf::Value(
@@ -229,14 +228,21 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
       tinygltf::Value::Object sh_ext;
       
       std::string surfaceBlend = "OPAQUE";
-      if (mat.surface_flags & SURF_ALPHASHADOW || mat.surface_flags & SURF_NONSOLID) {
-         surfaceBlend = "BLEND";
-      } else if (mat.texture_layers.size() == 1 && mat.texture_layers[0].blend_src == BlendFunc::ONE && mat.texture_layers[0].blend_dst == BlendFunc::ONE) {
-         surfaceBlend = "ADD";
+      if ((mat.surface_flags & SURF_ALPHASHADOW) ||
+          (mat.surface_flags & SURF_NONSOLID)) {
+        surfaceBlend = "BLEND";
+      } else if (mat.texture_layers.size() == 1 &&
+                 mat.texture_layers[0].blend_src == BlendFunc::ONE &&
+                 mat.texture_layers[0].blend_dst == BlendFunc::ONE) {
+        surfaceBlend = "ADD";
       }
       sh_ext["surfaceBlend"] = tinygltf::Value(surfaceBlend);
       
-      sh_ext["cullMode"] = tinygltf::Value("FRONT");
+      std::string cullStr = "FRONT";
+      if (mat.cull == Q3CullType::BACK) cullStr = "BACK";
+      else if (mat.cull == Q3CullType::NONE) cullStr = "NONE";
+      
+      sh_ext["cullMode"] = tinygltf::Value(cullStr);
 
       tinygltf::Value::Array layers_array;
       for (size_t i = 0; i < mat.texture_layers.size(); ++i) {
@@ -297,6 +303,45 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
             tinygltf::Value::Array val_arr = {tinygltf::Value(double(mod.s_rate)), tinygltf::Value(double(mod.t_rate))};
             t["value"] = tinygltf::Value(val_arr);
             tcmods.push_back(tinygltf::Value(t));
+        } else if (std::holds_alternative<Q3TCModRotate>(layer.tcmod)) {
+            const auto& mod = std::get<Q3TCModRotate>(layer.tcmod);
+            tinygltf::Value::Object t;
+            t["type"] = tinygltf::Value("ROTATE");
+            t["value"] = tinygltf::Value(double(mod.angle));
+            tcmods.push_back(tinygltf::Value(t));
+        } else if (std::holds_alternative<Q3TCModTurb>(layer.tcmod)) {
+            const auto& mod = std::get<Q3TCModTurb>(layer.tcmod);
+            tinygltf::Value::Object t;
+            t["type"] = tinygltf::Value("TURB");
+            std::string wave_str = "NONE";
+            if (mod.wave_type == Q3WaveType::SINE) wave_str = "SIN";
+            else if (mod.wave_type == Q3WaveType::TRIANGLE) wave_str = "TRIANGLE";
+            else if (mod.wave_type == Q3WaveType::SQUARE) wave_str = "SQUARE";
+            else if (mod.wave_type == Q3WaveType::SAWTOOTH) wave_str = "SAWTOOTH";
+            else if (mod.wave_type == Q3WaveType::INVERSE_SAWTOOTH) wave_str = "INVERSE_SAWTOOTH";
+            tinygltf::Value::Array val_arr = {tinygltf::Value(wave_str), tinygltf::Value(double(mod.base)), tinygltf::Value(double(mod.amplitude)), tinygltf::Value(double(mod.phase)), tinygltf::Value(double(mod.frequency))};
+            t["value"] = tinygltf::Value(val_arr);
+            tcmods.push_back(tinygltf::Value(t));
+        } else if (std::holds_alternative<Q3TCModStretch>(layer.tcmod)) {
+            const auto& mod = std::get<Q3TCModStretch>(layer.tcmod);
+            tinygltf::Value::Object t;
+            t["type"] = tinygltf::Value("STRETCH");
+            std::string wave_str = "NONE";
+            if (mod.wave_type == Q3WaveType::SINE) wave_str = "SIN";
+            else if (mod.wave_type == Q3WaveType::TRIANGLE) wave_str = "TRIANGLE";
+            else if (mod.wave_type == Q3WaveType::SQUARE) wave_str = "SQUARE";
+            else if (mod.wave_type == Q3WaveType::SAWTOOTH) wave_str = "SAWTOOTH";
+            else if (mod.wave_type == Q3WaveType::INVERSE_SAWTOOTH) wave_str = "INVERSE_SAWTOOTH";
+            tinygltf::Value::Array val_arr = {tinygltf::Value(wave_str), tinygltf::Value(double(mod.base)), tinygltf::Value(double(mod.amplitude)), tinygltf::Value(double(mod.phase)), tinygltf::Value(double(mod.frequency))};
+            t["value"] = tinygltf::Value(val_arr);
+            tcmods.push_back(tinygltf::Value(t));
+        } else if (std::holds_alternative<Q3TCModTransform>(layer.tcmod)) {
+            const auto& mod = std::get<Q3TCModTransform>(layer.tcmod);
+            tinygltf::Value::Object t;
+            t["type"] = tinygltf::Value("TRANSFORM");
+            tinygltf::Value::Array val_arr = {tinygltf::Value(double(mod(0,0))), tinygltf::Value(double(mod(0,1))), tinygltf::Value(double(mod(0,2))), tinygltf::Value(double(mod(1,0))), tinygltf::Value(double(mod(1,1))), tinygltf::Value(double(mod(1,2)))};
+            t["value"] = tinygltf::Value(val_arr);
+            tcmods.push_back(tinygltf::Value(t));
         }
         
         if (!tcmods.empty()) {
@@ -307,15 +352,20 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
       }
       sh_ext["layers"] = tinygltf::Value(layers_array);
 
-      if (std::find(model.extensionsUsed.begin(), model.extensionsUsed.end(), "SH_material_layers") == model.extensionsUsed.end()) {
-        model.extensionsUsed.push_back("SH_material_layers");
-      }
+      used_sh_material_layers = true;
       gmat.extensions["SH_material_layers"] = tinygltf::Value(sh_ext);
     }
 
     model.materials.push_back(gmat);
     bsp_to_gltf_material[bsp_tex_idx] =
         static_cast<int>(model.materials.size() - 1);
+  }
+
+  if (used_sh_material_layers) {
+    model.extensionsUsed.push_back("SH_material_layers");
+  }
+  if (used_khr_emissive_strength) {
+    model.extensionsUsed.push_back("KHR_materials_emissive_strength");
   }
 
   // 2. Create Root "Worldspawn" Node

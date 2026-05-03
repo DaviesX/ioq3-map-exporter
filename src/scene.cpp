@@ -185,6 +185,7 @@ Scene AssembleBSPObjects(
 
     mat.texture_layers = bsp_mat.texture_layers;
     mat.surface_flags = bsp_mat.surface_flags;
+    mat.cull = bsp_mat.cull;
     // TODO: Support multiple texture layers.
     for (const auto& layer : bsp_mat.texture_layers) {
       if (std::holds_alternative<Q3TCModNoOp>(layer.tcmod)) {
