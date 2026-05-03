@@ -35,6 +35,10 @@ struct Material {
 
   // Emission (for Area Lights).
   float emission_intensity = 0.0f;
+
+  // Q3 texture layers for custom glTF extension
+  std::vector<Q3TextureLayer> texture_layers;
+  int surface_flags = 0;
 };
 
 // --- Geometry/Triangle Mesh ---

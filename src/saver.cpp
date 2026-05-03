@@ -224,6 +224,95 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
           tinygltf::Value(ext_obj);
     }
 
+    // Construct SH_material_layers extension
+    if (!mat.texture_layers.empty()) {
+      tinygltf::Value::Object sh_ext;
+      
+      std::string surfaceBlend = "OPAQUE";
+      if (mat.surface_flags & SURF_ALPHASHADOW || mat.surface_flags & SURF_NONSOLID) {
+         surfaceBlend = "BLEND";
+      } else if (mat.texture_layers.size() == 1 && mat.texture_layers[0].blend_src == BlendFunc::ONE && mat.texture_layers[0].blend_dst == BlendFunc::ONE) {
+         surfaceBlend = "ADD";
+      }
+      sh_ext["surfaceBlend"] = tinygltf::Value(surfaceBlend);
+      
+      sh_ext["cullMode"] = tinygltf::Value("FRONT");
+
+      tinygltf::Value::Array layers_array;
+      for (size_t i = 0; i < mat.texture_layers.size(); ++i) {
+        const auto& layer = mat.texture_layers[i];
+        tinygltf::Value::Object layer_obj;
+
+        std::string tex_name = folder_name.string() + "_layer" + std::to_string(i) + ".png";
+        std::string tex_uri = (folder_name / tex_name).string();
+        
+        ConvertToPNG(layer.path, texture_dir / tex_name, false);
+
+        tinygltf::Value::Object tex_obj;
+        tex_obj["index"] = tinygltf::Value(GetOrAddTexture(&model, &texture_allocations, tex_uri));
+        layer_obj["texture"] = tinygltf::Value(tex_obj);
+
+        std::string blendMode = "OPAQUE";
+        if (layer.blend_src == BlendFunc::DST_COLOR && layer.blend_dst == BlendFunc::ZERO) {
+            blendMode = "MULTIPLY";
+        } else if (layer.blend_src == BlendFunc::ONE && layer.blend_dst == BlendFunc::ONE) {
+            blendMode = "ADD";
+        } else if (layer.blend_src == BlendFunc::SRC_ALPHA && layer.blend_dst == BlendFunc::ONE_MINUS_SRC_ALPHA) {
+            blendMode = "ALPHA";
+        }
+        layer_obj["blendMode"] = tinygltf::Value(blendMode);
+
+        tinygltf::Value::Object rgbgen_obj;
+        if (layer.rgbgen.type == RgbGenType::IDENTITY) rgbgen_obj["type"] = tinygltf::Value("IDENTITY");
+        else if (layer.rgbgen.type == RgbGenType::VERTEX) rgbgen_obj["type"] = tinygltf::Value("VERTEX");
+        else if (layer.rgbgen.type == RgbGenType::EXACT_VERTEX) rgbgen_obj["type"] = tinygltf::Value("EXACT_VERTEX");
+        else if (layer.rgbgen.type == RgbGenType::IDENTITY_LIGHTING) rgbgen_obj["type"] = tinygltf::Value("IDENTITY_LIGHTING");
+        else if (layer.rgbgen.type == RgbGenType::WAVE) {
+            rgbgen_obj["type"] = tinygltf::Value("WAVE");
+            if (layer.rgbgen.wave_type == Q3WaveType::SINE) rgbgen_obj["func"] = tinygltf::Value("SIN");
+            else if (layer.rgbgen.wave_type == Q3WaveType::TRIANGLE) rgbgen_obj["func"] = tinygltf::Value("TRIANGLE");
+            else if (layer.rgbgen.wave_type == Q3WaveType::SQUARE) rgbgen_obj["func"] = tinygltf::Value("SQUARE");
+            else if (layer.rgbgen.wave_type == Q3WaveType::SAWTOOTH) rgbgen_obj["func"] = tinygltf::Value("SAWTOOTH");
+            else if (layer.rgbgen.wave_type == Q3WaveType::INVERSE_SAWTOOTH) rgbgen_obj["func"] = tinygltf::Value("INVERSE_SAWTOOTH");
+            
+            rgbgen_obj["base"] = tinygltf::Value(double(layer.rgbgen.base));
+            rgbgen_obj["amplitude"] = tinygltf::Value(double(layer.rgbgen.amplitude));
+            rgbgen_obj["phase"] = tinygltf::Value(double(layer.rgbgen.phase));
+            rgbgen_obj["frequency"] = tinygltf::Value(double(layer.rgbgen.frequency));
+        }
+        layer_obj["rgbGen"] = tinygltf::Value(rgbgen_obj);
+
+        tinygltf::Value::Array tcmods;
+        if (std::holds_alternative<Q3TCModScale>(layer.tcmod)) {
+            const auto& mod = std::get<Q3TCModScale>(layer.tcmod);
+            tinygltf::Value::Object t;
+            t["type"] = tinygltf::Value("SCALE");
+            tinygltf::Value::Array val_arr = {tinygltf::Value(double(mod.s_scale)), tinygltf::Value(double(mod.t_scale))};
+            t["value"] = tinygltf::Value(val_arr);
+            tcmods.push_back(tinygltf::Value(t));
+        } else if (std::holds_alternative<Q3TCModScroll>(layer.tcmod)) {
+            const auto& mod = std::get<Q3TCModScroll>(layer.tcmod);
+            tinygltf::Value::Object t;
+            t["type"] = tinygltf::Value("SCROLL");
+            tinygltf::Value::Array val_arr = {tinygltf::Value(double(mod.s_rate)), tinygltf::Value(double(mod.t_rate))};
+            t["value"] = tinygltf::Value(val_arr);
+            tcmods.push_back(tinygltf::Value(t));
+        }
+        
+        if (!tcmods.empty()) {
+            layer_obj["tcMod"] = tinygltf::Value(tcmods);
+        }
+
+        layers_array.push_back(tinygltf::Value(layer_obj));
+      }
+      sh_ext["layers"] = tinygltf::Value(layers_array);
+
+      if (std::find(model.extensionsUsed.begin(), model.extensionsUsed.end(), "SH_material_layers") == model.extensionsUsed.end()) {
+        model.extensionsUsed.push_back("SH_material_layers");
+      }
+      gmat.extensions["SH_material_layers"] = tinygltf::Value(sh_ext);
+    }
+
     model.materials.push_back(gmat);
     bsp_to_gltf_material[bsp_tex_idx] =
         static_cast<int>(model.materials.size() - 1);

@@ -308,6 +308,29 @@ std::optional<Q3TextureLayer> ParseShaderStages(const VirtualFilesystem& vfs,
         }
         result.blend_dst = op2.value();
       }
+    } else if (keyword == "rgbgen") {
+      std::string type_str = tokenizer->Next();
+      std::string lower_type = type_str;
+      std::transform(lower_type.begin(), lower_type.end(), lower_type.begin(), ::tolower);
+      
+      if (lower_type == "identity") {
+        result.rgbgen.type = RgbGenType::IDENTITY;
+      } else if (lower_type == "vertex") {
+        result.rgbgen.type = RgbGenType::VERTEX;
+      } else if (lower_type == "exactvertex") {
+        result.rgbgen.type = RgbGenType::EXACT_VERTEX;
+      } else if (lower_type == "identitylighting") {
+        result.rgbgen.type = RgbGenType::IDENTITY_LIGHTING;
+      } else if (lower_type == "wave") {
+        result.rgbgen.type = RgbGenType::WAVE;
+        result.rgbgen.wave_type = GetWaveType(tokenizer->Next());
+        result.rgbgen.base = std::stof(tokenizer->Next());
+        result.rgbgen.amplitude = std::stof(tokenizer->Next());
+        result.rgbgen.phase = std::stof(tokenizer->Next());
+        result.rgbgen.frequency = std::stof(tokenizer->Next());
+      } else {
+        DLOG(WARNING) << "Unsupported rgbGen type: " << type_str;
+      }
     }
   }
 
