@@ -21,6 +21,27 @@ namespace {
 const float kAreaLightIntensityScale = .5f;
 const float kPunctualLightIntensityScale = 100.0f;
 
+// Maps a Quake 3 blend factor to its canonical GL name (without the GL_ prefix),
+// e.g. BlendFunc::ONE_MINUS_SRC_ALPHA -> "ONE_MINUS_SRC_ALPHA". The raw source
+// and destination factors are emitted into the SH_material_layers extension so
+// the renderer can reproduce the exact Quake 3 blend state, rather than a lossy
+// enumerated mode that cannot express combinations like (SRC_ALPHA, ONE).
+const char* BlendFuncToString(BlendFunc f) {
+  switch (f) {
+    case BlendFunc::ZERO: return "ZERO";
+    case BlendFunc::ONE: return "ONE";
+    case BlendFunc::SRC_COLOR: return "SRC_COLOR";
+    case BlendFunc::ONE_MINUS_SRC_COLOR: return "ONE_MINUS_SRC_COLOR";
+    case BlendFunc::DST_COLOR: return "DST_COLOR";
+    case BlendFunc::ONE_MINUS_DST_COLOR: return "ONE_MINUS_DST_COLOR";
+    case BlendFunc::SRC_ALPHA: return "SRC_ALPHA";
+    case BlendFunc::ONE_MINUS_SRC_ALPHA: return "ONE_MINUS_SRC_ALPHA";
+    case BlendFunc::DST_ALPHA: return "DST_ALPHA";
+    case BlendFunc::ONE_MINUS_DST_ALPHA: return "ONE_MINUS_DST_ALPHA";
+  }
+  return "ONE";
+}
+
 // Helpers for buffer management
 void AddBufferView(const void* data, size_t size, size_t stride, int target,
                    int& view_index, tinygltf::Model* model) {
@@ -258,15 +279,11 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
         tex_obj["index"] = tinygltf::Value(GetOrAddTexture(&model, &texture_allocations, tex_uri));
         layer_obj["texture"] = tinygltf::Value(tex_obj);
 
-        std::string blendMode = "OPAQUE";
-        if (layer.blend_src == BlendFunc::DST_COLOR && layer.blend_dst == BlendFunc::ZERO) {
-            blendMode = "MULTIPLY";
-        } else if (layer.blend_src == BlendFunc::ONE && layer.blend_dst == BlendFunc::ONE) {
-            blendMode = "ADD";
-        } else if (layer.blend_src == BlendFunc::SRC_ALPHA && layer.blend_dst == BlendFunc::ONE_MINUS_SRC_ALPHA) {
-            blendMode = "ALPHA";
-        }
-        layer_obj["blendMode"] = tinygltf::Value(blendMode);
+        // Emit the raw Quake 3 blendFunc factors so the renderer can reproduce
+        // the exact GL blend state. An enumerated blendMode would be lossy and
+        // could not express combinations such as (SRC_ALPHA, ONE).
+        layer_obj["blendSrc"] = tinygltf::Value(std::string(BlendFuncToString(layer.blend_src)));
+        layer_obj["blendDst"] = tinygltf::Value(std::string(BlendFuncToString(layer.blend_dst)));
 
         tinygltf::Value::Object rgbgen_obj;
         if (layer.rgbgen.type == RgbGenType::IDENTITY) rgbgen_obj["type"] = tinygltf::Value("IDENTITY");

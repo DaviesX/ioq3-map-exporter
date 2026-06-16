@@ -5,6 +5,7 @@
 #include <Eigen/Dense>
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -127,12 +128,13 @@ int GetSurfaceParmFlag(const std::string& parm) {
 }
 
 float SafeStof(const std::string& str) {
-  if (str.empty()) return 0.0f;
-  try {
-    return std::stof(str);
-  } catch (...) {
-    return 0.0f;
-  }
+  // Locale-independent and non-throwing. Quake 3 shaders always use '.' as the
+  // decimal separator, so std::from_chars parses correctly regardless of the
+  // host locale (unlike std::stof / atof). Returns 0.0f on empty or invalid
+  // input, and parses the leading numeric prefix otherwise.
+  float value = 0.0f;
+  std::from_chars(str.data(), str.data() + str.size(), value);
+  return value;
 }
 
 Q3WaveType GetWaveType(const std::string& wave_func) {
