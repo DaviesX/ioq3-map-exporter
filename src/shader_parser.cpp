@@ -5,6 +5,7 @@
 #include <Eigen/Dense>
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -126,6 +127,16 @@ int GetSurfaceParmFlag(const std::string& parm) {
   return 0;
 }
 
+float SafeStof(const std::string& str) {
+  // Locale-independent and non-throwing. Quake 3 shaders always use '.' as the
+  // decimal separator, so std::from_chars parses correctly regardless of the
+  // host locale (unlike std::stof / atof). Returns 0.0f on empty or invalid
+  // input, and parses the leading numeric prefix otherwise.
+  float value = 0.0f;
+  std::from_chars(str.data(), str.data() + str.size(), value);
+  return value;
+}
+
 Q3WaveType GetWaveType(const std::string& wave_func) {
   std::string w = wave_func;
   std::transform(w.begin(), w.end(), w.begin(), ::tolower);
@@ -169,20 +180,30 @@ void ParseShaderParameter(const VirtualFilesystem& vfs,
     std::string param = tokenizer->Next();
     shader->surface_flags |= GetSurfaceParmFlag(param);
   } else if (lower_keyword == "q3map_sun") {
-    float r = std::stof(tokenizer->Next());
-    float g = std::stof(tokenizer->Next());
-    float b = std::stof(tokenizer->Next());
+    float r = SafeStof(tokenizer->Next());
+    float g = SafeStof(tokenizer->Next());
+    float b = SafeStof(tokenizer->Next());
     shader->q3map_sun_color = Eigen::Vector3f(r, g, b);
 
-    shader->q3map_sun_intensity = std::stof(tokenizer->Next());
-    float degrees = std::stof(tokenizer->Next());
-    float elevation = std::stof(tokenizer->Next());
+    shader->q3map_sun_intensity = SafeStof(tokenizer->Next());
+    float degrees = SafeStof(tokenizer->Next());
+    float elevation = SafeStof(tokenizer->Next());
     shader->q3map_sun_direction = Eigen::Vector2f(degrees, elevation);
   } else if (lower_keyword == "q3map_surfacelight") {
-    shader->q3map_surfacelight = std::stof(tokenizer->Next());
+    shader->q3map_surfacelight = SafeStof(tokenizer->Next());
   } else if (lower_keyword == "q3map_lightimage") {
     std::string path_str = tokenizer->Next();
     shader->q3map_lightimage = vfs.mount_point / path_str;
+  } else if (lower_keyword == "cull") {
+    std::string cull_type = tokenizer->Next();
+    std::transform(cull_type.begin(), cull_type.end(), cull_type.begin(), ::tolower);
+    if (cull_type == "none" || cull_type == "twosided" || cull_type == "disable") {
+      shader->cull = Q3CullType::NONE;
+    } else if (cull_type == "back" || cull_type == "backsided" || cull_type == "baksided") {
+      shader->cull = Q3CullType::BACK;
+    } else if (cull_type == "front" || cull_type == "frontsided") {
+      shader->cull = Q3CullType::FRONT;
+    }
   } else if (lower_keyword == "q3map_sunlight") {
     // ignore
   } else if (lower_keyword == "q3map_sunmangle") {
@@ -226,15 +247,15 @@ std::optional<Q3TextureLayer> ParseShaderStages(const VirtualFilesystem& vfs,
       std::transform(tcmod_op.begin(), tcmod_op.end(), tcmod_op.begin(),
                      ::tolower);
       if (tcmod_op == "scale") {
-        float s = std::stof(tokenizer->Next());
-        float t = std::stof(tokenizer->Next());
+        float s = SafeStof(tokenizer->Next());
+        float t = SafeStof(tokenizer->Next());
         result.tcmod = Q3TCModScale{s, t};
       } else if (tcmod_op == "scroll") {
-        float s = std::stof(tokenizer->Next());
-        float t = std::stof(tokenizer->Next());
+        float s = SafeStof(tokenizer->Next());
+        float t = SafeStof(tokenizer->Next());
         result.tcmod = Q3TCModScroll{s, t};
       } else if (tcmod_op == "rotate") {
-        float angle = std::stof(tokenizer->Next());
+        float angle = SafeStof(tokenizer->Next());
         result.tcmod = Q3TCModRotate{angle};
       } else if (tcmod_op == "turb") {
         std::string base_or_func = tokenizer->Next();
@@ -242,30 +263,30 @@ std::optional<Q3TextureLayer> ParseShaderStages(const VirtualFilesystem& vfs,
 
         float base;
         if (wave_type == Q3WaveType::NONE) {
-          base = std::stof(base_or_func);
+          base = SafeStof(base_or_func);
         } else {
-          base = std::stof(tokenizer->Next());
+          base = SafeStof(tokenizer->Next());
         }
-        float amplitude = std::stof(tokenizer->Next());
-        float phase = std::stof(tokenizer->Next());
-        float frequency = std::stof(tokenizer->Next());
+        float amplitude = SafeStof(tokenizer->Next());
+        float phase = SafeStof(tokenizer->Next());
+        float frequency = SafeStof(tokenizer->Next());
         result.tcmod =
             Q3TCModTurb{wave_type, base, amplitude, phase, frequency};
       } else if (tcmod_op == "stretch") {
         Q3WaveType wave_type = GetWaveType(tokenizer->Next());
-        float base = std::stof(tokenizer->Next());
-        float amplitude = std::stof(tokenizer->Next());
-        float phase = std::stof(tokenizer->Next());
-        float frequency = std::stof(tokenizer->Next());
+        float base = SafeStof(tokenizer->Next());
+        float amplitude = SafeStof(tokenizer->Next());
+        float phase = SafeStof(tokenizer->Next());
+        float frequency = SafeStof(tokenizer->Next());
         result.tcmod =
             Q3TCModStretch{wave_type, base, amplitude, phase, frequency};
       } else if (tcmod_op == "transform") {
-        float m00 = std::stof(tokenizer->Next());
-        float m01 = std::stof(tokenizer->Next());
-        float m10 = std::stof(tokenizer->Next());
-        float m11 = std::stof(tokenizer->Next());
-        float t0 = std::stof(tokenizer->Next());
-        float t1 = std::stof(tokenizer->Next());
+        float m00 = SafeStof(tokenizer->Next());
+        float m01 = SafeStof(tokenizer->Next());
+        float m10 = SafeStof(tokenizer->Next());
+        float m11 = SafeStof(tokenizer->Next());
+        float t0 = SafeStof(tokenizer->Next());
+        float t1 = SafeStof(tokenizer->Next());
 
         Q3TCModTransform transform;
         // clang-format off
@@ -307,6 +328,29 @@ std::optional<Q3TextureLayer> ParseShaderStages(const VirtualFilesystem& vfs,
           continue;
         }
         result.blend_dst = op2.value();
+      }
+    } else if (keyword == "rgbgen") {
+      std::string type_str = tokenizer->Next();
+      std::string lower_type = type_str;
+      std::transform(lower_type.begin(), lower_type.end(), lower_type.begin(), ::tolower);
+      
+      if (lower_type == "identity") {
+        result.rgbgen.type = RgbGenType::IDENTITY;
+      } else if (lower_type == "vertex") {
+        result.rgbgen.type = RgbGenType::VERTEX;
+      } else if (lower_type == "exactvertex") {
+        result.rgbgen.type = RgbGenType::EXACT_VERTEX;
+      } else if (lower_type == "identitylighting") {
+        result.rgbgen.type = RgbGenType::IDENTITY_LIGHTING;
+      } else if (lower_type == "wave") {
+        result.rgbgen.type = RgbGenType::WAVE;
+        result.rgbgen.wave_type = GetWaveType(tokenizer->Next());
+        result.rgbgen.base = SafeStof(tokenizer->Next());
+        result.rgbgen.amplitude = SafeStof(tokenizer->Next());
+        result.rgbgen.phase = SafeStof(tokenizer->Next());
+        result.rgbgen.frequency = SafeStof(tokenizer->Next());
+      } else {
+        DLOG(WARNING) << "Unsupported rgbGen type: " << type_str;
       }
     }
   }

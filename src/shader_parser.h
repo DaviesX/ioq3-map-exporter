@@ -91,6 +91,29 @@ enum class BlendFunc {
   ONE_MINUS_SRC_COLOR,
 };
 
+enum class RgbGenType {
+  IDENTITY,
+  VERTEX,
+  WAVE,
+  IDENTITY_LIGHTING,
+  EXACT_VERTEX
+};
+
+struct Q3RgbGen {
+  RgbGenType type = RgbGenType::IDENTITY;
+  Q3WaveType wave_type = Q3WaveType::NONE;
+  float base = 0.0f;
+  float amplitude = 0.0f;
+  float phase = 0.0f;
+  float frequency = 0.0f;
+
+  bool operator==(const Q3RgbGen& other) const {
+      return type == other.type && wave_type == other.wave_type && 
+             base == other.base && amplitude == other.amplitude && 
+             phase == other.phase && frequency == other.frequency;
+  }
+};
+
 struct Q3TextureLayer {
   std::filesystem::path path;
   std::variant<Q3TCModNoOp, Q3TCModScale, Q3TCModScroll, Q3TCModRotate,
@@ -101,15 +124,27 @@ struct Q3TextureLayer {
   BlendFunc blend_src = BlendFunc::ONE;
   BlendFunc blend_dst = BlendFunc::ZERO;
 
+  // Color Generation
+  Q3RgbGen rgbgen;
+
   bool operator==(const Q3TextureLayer& other) const {
     return path == other.path && blend_src == other.blend_src &&
-           blend_dst == other.blend_dst;
+           blend_dst == other.blend_dst && rgbgen == other.rgbgen;
   }
+};
+
+enum class Q3CullType {
+  FRONT,
+  BACK,
+  NONE
 };
 
 struct Q3Shader {
   // Original name specified in the shader script.
   Q3ShaderName name;
+
+  // Culling
+  Q3CullType cull = Q3CullType::FRONT;
 
   // Q3 flags
   int surface_flags = 0;

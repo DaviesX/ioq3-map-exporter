@@ -174,5 +174,43 @@ textures/blend
   EXPECT_EQ(shader.texture_layers[2].blend_dst, BlendFunc::ZERO);
 }
 
+TEST_F(ShaderParserTest, ParseShaderRgbGen) {
+  CreateFile("textures/rgbgen.tga", "");
+
+  CreateShaderFile("rgbgen.shader", R"(
+textures/rgbgen
+{
+    {
+        map textures/rgbgen.tga
+        rgbgen wave sin 0.1 0.2 0.3 0.4
+    }
+    {
+        map textures/rgbgen.tga
+        rgbGen identity
+    }
+    {
+        map textures/rgbgen.tga
+        rgbgen exactVertex
+    }
+}
+)");
+
+  auto files = ListQ3ShaderScripts(*vfs_);
+  auto shaders = ParseShaderScripts(*vfs_, files);
+  const auto& shader = shaders["textures/rgbgen"];
+
+  ASSERT_EQ(shader.texture_layers.size(), 3);
+
+  EXPECT_EQ(shader.texture_layers[0].rgbgen.type, RgbGenType::WAVE);
+  EXPECT_EQ(shader.texture_layers[0].rgbgen.wave_type, Q3WaveType::SINE);
+  EXPECT_FLOAT_EQ(shader.texture_layers[0].rgbgen.base, 0.1f);
+  EXPECT_FLOAT_EQ(shader.texture_layers[0].rgbgen.amplitude, 0.2f);
+  EXPECT_FLOAT_EQ(shader.texture_layers[0].rgbgen.phase, 0.3f);
+  EXPECT_FLOAT_EQ(shader.texture_layers[0].rgbgen.frequency, 0.4f);
+
+  EXPECT_EQ(shader.texture_layers[1].rgbgen.type, RgbGenType::IDENTITY);
+  EXPECT_EQ(shader.texture_layers[2].rgbgen.type, RgbGenType::EXACT_VERTEX);
+}
+
 }  // namespace
 }  // namespace ioq3_map
