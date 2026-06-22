@@ -108,9 +108,9 @@ struct Q3RgbGen {
   float frequency = 0.0f;
 
   bool operator==(const Q3RgbGen& other) const {
-      return type == other.type && wave_type == other.wave_type && 
-             base == other.base && amplitude == other.amplitude && 
-             phase == other.phase && frequency == other.frequency;
+    return type == other.type && wave_type == other.wave_type &&
+           base == other.base && amplitude == other.amplitude &&
+           phase == other.phase && frequency == other.frequency;
   }
 };
 
@@ -127,17 +127,22 @@ struct Q3TextureLayer {
   // Color Generation
   Q3RgbGen rgbgen;
 
+  // Animated texture (from animMap). Empty for a static `map` stage. When this
+  // stage has no explicit `map`, `path` holds the first frame
+  // (anim_frame_paths.front()) so single-texture consumers treat it as a normal
+  // layer.
+  std::vector<std::filesystem::path> anim_frame_paths;
+  float anim_frequency = 0.0f;  // frames per second
+
   bool operator==(const Q3TextureLayer& other) const {
     return path == other.path && blend_src == other.blend_src &&
-           blend_dst == other.blend_dst && rgbgen == other.rgbgen;
+           blend_dst == other.blend_dst && rgbgen == other.rgbgen &&
+           anim_frame_paths == other.anim_frame_paths &&
+           anim_frequency == other.anim_frequency;
   }
 };
 
-enum class Q3CullType {
-  FRONT,
-  BACK,
-  NONE
-};
+enum class Q3CullType { FRONT, BACK, NONE };
 
 struct Q3Shader {
   // Original name specified in the shader script.

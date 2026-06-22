@@ -279,6 +279,33 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
         tex_obj["index"] = tinygltf::Value(GetOrAddTexture(&model, &texture_allocations, tex_uri));
         layer_obj["texture"] = tinygltf::Value(tex_obj);
 
+        // Animated stage (animMap): keep `texture` pointing at frame 0 above and
+        // emit the playback frequency plus the full list of frame texture
+        // indices so the renderer can cycle through them.
+        if (!layer.anim_frame_paths.empty()) {
+          layer_obj["animFreq"] = tinygltf::Value(double(layer.anim_frequency));
+          tinygltf::Value::Array anim_frames;
+          for (size_t f = 0; f < layer.anim_frame_paths.size(); ++f) {
+            std::string frame_uri;
+            if (f == 0) {
+              // Frame 0 is the layer's representative texture, already written
+              // above as `_layer{i}.png`. Reuse it so animFrames[0] dedups to
+              // the same texture index as `texture`.
+              frame_uri = tex_uri;
+            } else {
+              std::string frame_name = folder_name.string() + "_layer" +
+                                       std::to_string(i) + "_frame" +
+                                       std::to_string(f) + ".png";
+              frame_uri = (folder_name / frame_name).string();
+              ConvertToPNG(layer.anim_frame_paths[f], texture_dir / frame_name,
+                           false);
+            }
+            anim_frames.push_back(tinygltf::Value(
+                GetOrAddTexture(&model, &texture_allocations, frame_uri)));
+          }
+          layer_obj["animFrames"] = tinygltf::Value(anim_frames);
+        }
+
         // Emit the raw Quake 3 blendFunc factors so the renderer can reproduce
         // the exact GL blend state. An enumerated blendMode would be lossy and
         // could not express combinations such as (SRC_ALPHA, ONE).
