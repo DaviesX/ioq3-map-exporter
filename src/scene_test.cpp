@@ -51,7 +51,8 @@ TEST_F(SceneTest, AssembleBSPObjectsPlanarTransform) {
   materials_[0] = mat;
 
   Scene scene =
-      AssembleBSPObjects(bsp_, geometries_, materials_, entities_, true);
+      AssembleBSPObjects(bsp_, geometries_, materials_, entities_,
+                         {.collect_point_or_spot_lights = true});
 
   ASSERT_EQ(scene.geometries.size(), 1);
   const auto& out_geo = scene.geometries.at(0);
@@ -99,7 +100,8 @@ TEST_F(SceneTest, AssembleBSPObjectsExtractsSun) {
   materials_[0] = mat;
 
   Scene scene =
-      AssembleBSPObjects(bsp_, geometries_, materials_, entities_, true);
+      AssembleBSPObjects(bsp_, geometries_, materials_, entities_,
+                         {.collect_point_or_spot_lights = true});
 
   bool found_sun = false;
   for (const auto& l : scene.lights) {
@@ -148,7 +150,8 @@ TEST_F(SceneTest, AssembleBSPObjectsExtractsEntities) {
   entities_.push_back(e2);
 
   Scene scene =
-      AssembleBSPObjects(bsp_, geometries_, materials_, entities_, true);
+      AssembleBSPObjects(bsp_, geometries_, materials_, entities_,
+                         {.collect_point_or_spot_lights = true});
 
   EXPECT_GE(scene.lights.size(), 2);
 

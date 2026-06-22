@@ -49,6 +49,16 @@ struct ExtrusionConfig {
   float inset = 0.0f;
 };
 
+// Options for AssembleBSPObjects.
+struct AssemblyConfig {
+  // Collect point/spot lights from entities. These are typically virtual lights
+  // for artistic control; disable for physical correctness.
+  bool collect_point_or_spot_lights = false;
+
+  // Solidify thin opaque surfaces into closed shells.
+  ExtrusionConfig extrusion;
+};
+
 // --- Geometry/Triangle Mesh ---
 struct Geometry {
   std::vector<Eigen::Vector3f> vertices;
@@ -95,14 +105,14 @@ struct Scene {
   std::optional<Sky> sky;
 };
 
-// When `extrusion.thickness > 0`, opaque single-sided surfaces are solidified
-// into closed shells (see extrude.h). The default config disables it.
+// When `config.extrusion.thickness > 0`, opaque single-sided surfaces are
+// solidified into closed shells (see extrude.h). The default config disables
+// both light collection and solidification.
 Scene AssembleBSPObjects(
     const BSP& bsp,
     const std::unordered_map<BSPSurfaceIndex, BSPGeometry>& bsp_geometries,
     const std::unordered_map<BSPTextureIndex, BSPMaterial>& bsp_materials,
-    const std::vector<Entity>& bsp_entities, bool collect_point_or_spot_lights,
-    const ExtrusionConfig& extrusion = {});
+    const std::vector<Entity>& bsp_entities, const AssemblyConfig& config = {});
 
 }  // namespace ioq3_map
 

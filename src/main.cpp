@@ -111,13 +111,18 @@ int main(int argc, char* argv[]) {
   // Convert extrusion distances from Q3 units (inches) to meters to match the
   // glTF-space Geometry that the solidifier operates on.
   constexpr float kInchesToMeters = 0.0254f;
-  ioq3_map::ExtrusionConfig extrusion{
-      .thickness = static_cast<float>(FLAGS_extrude_thickness) * kInchesToMeters,
-      .inset = static_cast<float>(FLAGS_extrude_inset) * kInchesToMeters,
+  ioq3_map::AssemblyConfig assembly_config{
+      .collect_point_or_spot_lights = FLAGS_collect_point_or_spot_lights,
+      .extrusion =
+          {
+              .thickness =
+                  static_cast<float>(FLAGS_extrude_thickness) * kInchesToMeters,
+              .inset =
+                  static_cast<float>(FLAGS_extrude_inset) * kInchesToMeters,
+          },
   };
   auto scene = ioq3_map::AssembleBSPObjects(
-      *bsp, bsp_geometries, bsp_materials, bsp_entities,
-      FLAGS_collect_point_or_spot_lights, extrusion);
+      *bsp, bsp_geometries, bsp_materials, bsp_entities, assembly_config);
   LOG(INFO) << "Scene Assembled. Total Geometries: " << scene.geometries.size();
   LOG(INFO) << "Total Materials: " << scene.materials.size();
   LOG(INFO) << "Total Lights: " << scene.lights.size();
