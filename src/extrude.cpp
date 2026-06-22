@@ -61,12 +61,48 @@ std::vector<EdgeInfo> FindBoundaryEdges(const Geometry& geo) {
   return boundary;
 }
 
+// Per-boundary-vertex inward direction (unit, in the surface plane) used to inset
+// the back rim. For every boundary edge (p, q) — directed so the surface interior
+// lies to its left — the in-plane interior normal is faceNormal x edgeDir;
+// accumulating these over a vertex's incident boundary edges and renormalising
+// yields a direction that pushes each side wall perpendicularly off its own edge.
+// Interior vertices stay zero (their back copies are hidden, so no inset needed).
+std::vector<Eigen::Vector3f> ComputeBoundaryInward(
+    const std::vector<EdgeInfo>& boundary, const Geometry& geo) {
+  std::vector<Eigen::Vector3f> inward(geo.vertices.size(),
+                                      Eigen::Vector3f::Zero());
+  for (const auto& info : boundary) {
+    const Eigen::Vector3f& vp = geo.vertices[info.p];
+    const Eigen::Vector3f& vq = geo.vertices[info.q];
+    Eigen::Vector3f edge_dir = vq - vp;
+    // Average the endpoint normals for the local face normal of this edge.
+    Eigen::Vector3f face_n = geo.normals[info.p] + geo.normals[info.q];
+    Eigen::Vector3f interior = face_n.cross(edge_dir);  // left of (p -> q)
+    float len = interior.norm();
+    if (len > 1e-6f) {
+      interior /= len;
+      inward[info.p] += interior;
+      inward[info.q] += interior;
+    }
+  }
+  for (auto& dir : inward) {
+    float len = dir.norm();
+    if (len > 1e-6f) {
+      dir /= len;
+    }
+  }
+  return inward;
+}
+
 // Appends the back cap: every front vertex offset along -normal by `thickness`,
-// with its rim pulled toward the surface centroid by up to `inset` so the side
-// walls tilt off neighbouring faces' planes. Back-cap triangles use reversed
-// winding so they face -normal. Callers must have reserved the final capacity
-// (front triangles are read in place while indices are appended).
-void AppendBackCap(float thickness, float inset, bool has_tex_uv,
+// with each boundary vertex pulled perpendicularly into the surface interior by
+// up to `inset` (per-edge direction, see ComputeBoundaryInward) so the side walls
+// tilt off neighbouring faces' planes. The pull is clamped by the distance to the
+// centroid so tiny surfaces can't overshoot/invert. Back-cap triangles use
+// reversed winding so they face -normal. Callers must have reserved the final
+// capacity (front triangles are read in place while indices are appended).
+void AppendBackCap(float thickness, float inset,
+                   const std::vector<Eigen::Vector3f>& inward, bool has_tex_uv,
                    bool has_light_uv, Geometry* geo) {
   const size_t front_count = geo->vertices.size();
   const size_t front_index_count = geo->indices.size();
@@ -82,12 +118,8 @@ void AppendBackCap(float thickness, float inset, bool has_tex_uv,
     const Eigen::Vector3f& v = geo->vertices[i];
     const Eigen::Vector3f& n = geo->normals[i];
 
-    Eigen::Vector3f inward = centroid - v;
-    float dist = inward.norm();
-    Eigen::Vector3f pull = Eigen::Vector3f::Zero();
-    if (dist > 1e-6f) {
-      pull = (inward / dist) * std::min(inset, dist);
-    }
+    float dist_to_centroid = (centroid - v).norm();
+    Eigen::Vector3f pull = inward[i] * std::min(inset, dist_to_centroid);
     Eigen::Vector3f back = v + pull - n * thickness;
 
     geo->vertices.push_back(back);
@@ -166,8 +198,11 @@ void SolidifyGeometry(const ExtrusionConfig& config, Geometry* geo) {
   }
   geo->indices.reserve(front_index_count * 2 + boundary.size() * 6);
 
+  std::vector<Eigen::Vector3f> inward = ComputeBoundaryInward(boundary, *geo);
+
   const uint32_t back_base = static_cast<uint32_t>(front_count);
-  AppendBackCap(config.thickness, config.inset, has_tex_uv, has_light_uv, geo);
+  AppendBackCap(config.thickness, config.inset, inward, has_tex_uv, has_light_uv,
+                geo);
   AppendSideWalls(boundary, back_base, geo);
 }
 

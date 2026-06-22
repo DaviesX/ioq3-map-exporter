@@ -144,5 +144,32 @@ TEST(Extrude, CubeFacesNoCoplanarOverlap) {
   }
 }
 
+// A long, thin strip is the case a centroid pull handles badly: at a far corner
+// the direction to the centroid runs almost parallel to the long edges, so the
+// back rim barely clears the long-edge planes and the side wall stays nearly
+// coplanar with a neighbour (z-fighting). The per-edge inward inset clears every
+// boundary edge perpendicularly, so each back vertex sits a real margin inside
+// the strip's y in [0, 0.1] span.
+TEST(Extrude, ElongatedStripClearsLongEdges) {
+  const float thickness = 0.2f;
+  const float inset = 0.05f;
+  Geometry g;
+  g.vertices = {{0, 0, 0}, {10, 0, 0}, {10, 0.1f, 0}, {0, 0.1f, 0}};
+  g.normals = {{0, 0, 1}, {0, 0, 1}, {0, 0, 1}, {0, 0, 1}};
+  g.texture_uvs = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+  g.lightmap_uvs = g.texture_uvs;
+  g.indices = {0, 1, 2, 0, 2, 3};
+  SolidifyGeometry({.thickness = thickness, .inset = inset}, &g);
+
+  ASSERT_EQ(g.vertices.size(), 8u);
+  // Every back vertex must clear both long-edge planes (y=0 and y=0.1) by a real
+  // margin. A centroid pull would leave the corners at y ~= 5e-4 here.
+  for (int i = 4; i < 8; ++i) {
+    const Eigen::Vector3f& b = g.vertices[i];
+    EXPECT_GT(b.y(), 0.02f) << "back vertex " << i << " hugs the y=0 plane";
+    EXPECT_LT(b.y(), 0.08f) << "back vertex " << i << " hugs the y=0.1 plane";
+  }
+}
+
 }  // namespace
 }  // namespace ioq3_map
