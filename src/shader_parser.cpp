@@ -66,6 +66,28 @@ class Tokenizer {
     return false;
   }
 
+  // Like Next() but only returns a token that appears on the current line.
+  // Returns "" (without consuming the boundary) when the next content is a
+  // newline, a // comment, or a {/} brace. Used for line-terminated directives
+  // such as animMap, whose argument list ends at end-of-line.
+  std::string NextSameLine() {
+    while (pos_ < content_.size()) {
+      char c = content_[pos_];
+      if (c == '\n') return "";
+      if (std::isspace(static_cast<unsigned char>(c))) {
+        pos_++;
+        continue;
+      }
+      if (pos_ + 1 < content_.size() && c == '/' && content_[pos_ + 1] == '/') {
+        return "";
+      }
+      if (c == '{' || c == '}') return "";
+      break;
+    }
+    if (pos_ >= content_.size()) return "";
+    return Next();
+  }
+
  private:
   void SkipWhitespaceAndComments() {
     while (pos_ < content_.size()) {
@@ -196,10 +218,13 @@ void ParseShaderParameter(const VirtualFilesystem& vfs,
     shader->q3map_lightimage = vfs.mount_point / path_str;
   } else if (lower_keyword == "cull") {
     std::string cull_type = tokenizer->Next();
-    std::transform(cull_type.begin(), cull_type.end(), cull_type.begin(), ::tolower);
-    if (cull_type == "none" || cull_type == "twosided" || cull_type == "disable") {
+    std::transform(cull_type.begin(), cull_type.end(), cull_type.begin(),
+                   ::tolower);
+    if (cull_type == "none" || cull_type == "twosided" ||
+        cull_type == "disable") {
       shader->cull = Q3CullType::NONE;
-    } else if (cull_type == "back" || cull_type == "backsided" || cull_type == "baksided") {
+    } else if (cull_type == "back" || cull_type == "backsided" ||
+               cull_type == "baksided") {
       shader->cull = Q3CullType::BACK;
     } else if (cull_type == "front" || cull_type == "frontsided") {
       shader->cull = Q3CullType::FRONT;
@@ -242,6 +267,22 @@ std::optional<Q3TextureLayer> ParseShaderStages(const VirtualFilesystem& vfs,
         continue;
       }
       result.path = vfs.mount_point / texture_path;
+    } else if (keyword == "animmap") {
+      // animMap <freq> <frame1> <frame2> ... <frameN>. The frequency shares the
+      // line with the keyword; the frame list runs to end-of-line.
+      result.anim_frequency = SafeStof(tokenizer->Next());
+      for (std::string frame_file_path = tokenizer->NextSameLine();
+           !frame_file_path.empty();
+           frame_file_path = tokenizer->NextSameLine()) {
+        if (frame_file_path == "$lightmap" || frame_file_path == "$whiteimage")
+          continue;
+        result.anim_frame_paths.push_back(vfs.mount_point / frame_file_path);
+      }
+      if (!result.anim_frame_paths.empty() && result.path.empty()) {
+        // Frame 0 is the representative texture for single-texture consumers.
+        // Only if there isn't a primary map for this stage.
+        result.path = result.anim_frame_paths.front();
+      }
     } else if (keyword == "tcmod") {
       std::string tcmod_op = tokenizer->Next();
       std::transform(tcmod_op.begin(), tcmod_op.end(), tcmod_op.begin(),
@@ -332,8 +373,9 @@ std::optional<Q3TextureLayer> ParseShaderStages(const VirtualFilesystem& vfs,
     } else if (keyword == "rgbgen") {
       std::string type_str = tokenizer->Next();
       std::string lower_type = type_str;
-      std::transform(lower_type.begin(), lower_type.end(), lower_type.begin(), ::tolower);
-      
+      std::transform(lower_type.begin(), lower_type.end(), lower_type.begin(),
+                     ::tolower);
+
       if (lower_type == "identity") {
         result.rgbgen.type = RgbGenType::IDENTITY;
       } else if (lower_type == "vertex") {
@@ -396,6 +438,23 @@ void PruneInvalidTextureLayers(Q3Shader* shader) {
       continue;
     }
     it->path = *found_path;
+
+    // Resolve animated frames and drop frames whose texture is missing. Note,
+    // we don't need to reassign the primary path because this layer would have
+    // already been rejected if it were frame 0 and missing.
+    std::vector<std::filesystem::path> resolved_anim_frame_paths;
+    for (const auto& frame : it->anim_frame_paths) {
+      auto found = FindTexturePath(frame);
+      if (!found) {
+        // DLOG(WARNING)
+        //     << "Shader " << shader->name << " has missing animation frame "
+        //     << frame;
+        continue;
+      }
+      resolved_anim_frame_paths.push_back(*found);
+    }
+    it->anim_frame_paths = std::move(resolved_anim_frame_paths);
+
     ++it;
   }
 

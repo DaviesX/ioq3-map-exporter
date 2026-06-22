@@ -212,5 +212,84 @@ textures/rgbgen
   EXPECT_EQ(shader.texture_layers[2].rgbgen.type, RgbGenType::EXACT_VERTEX);
 }
 
+TEST_F(ShaderParserTest, ParseShaderAnimMap) {
+  CreateFile("textures/a/f0.tga", "");
+  CreateFile("textures/a/f1.tga", "");
+  CreateFile("textures/a/f2.tga", "");
+
+  CreateShaderFile("anim.shader", R"(
+textures/anim
+{
+    {
+        animMap 5 textures/a/f0.tga textures/a/f1.tga textures/a/f2.tga
+    }
+}
+)");
+
+  auto files = ListQ3ShaderScripts(*vfs_);
+  auto shaders = ParseShaderScripts(*vfs_, files);
+  const auto& shader = shaders["textures/anim"];
+
+  ASSERT_EQ(shader.texture_layers.size(), 1);
+  const auto& layer = shader.texture_layers[0];
+
+  EXPECT_FLOAT_EQ(layer.anim_frequency, 5.0f);
+  EXPECT_THAT(layer.anim_frame_paths,
+              ElementsAre(temp_dir_ / "textures/a/f0.tga",
+                          temp_dir_ / "textures/a/f1.tga",
+                          temp_dir_ / "textures/a/f2.tga"));
+  // Frame 0 becomes the representative texture for single-texture consumers.
+  EXPECT_EQ(layer.path, temp_dir_ / "textures/a/f0.tga");
+}
+
+TEST_F(ShaderParserTest, ParseShaderAnimMapStopsAtEndOfLine) {
+  CreateFile("textures/a/f0.tga", "");
+  CreateFile("textures/a/f1.tga", "");
+
+  CreateShaderFile("anim_eol.shader", R"(
+textures/anim_eol
+{
+    {
+        animMap 8 textures/a/f0.tga textures/a/f1.tga
+        blendfunc add
+    }
+}
+)");
+
+  auto files = ListQ3ShaderScripts(*vfs_);
+  auto shaders = ParseShaderScripts(*vfs_, files);
+  const auto& shader = shaders["textures/anim_eol"];
+
+  ASSERT_EQ(shader.texture_layers.size(), 1);
+  const auto& layer = shader.texture_layers[0];
+
+  // The frame list stops at end-of-line; blendfunc is its own directive.
+  EXPECT_EQ(layer.anim_frame_paths.size(), 2);
+  EXPECT_EQ(layer.blend_src, BlendFunc::ONE);
+  EXPECT_EQ(layer.blend_dst, BlendFunc::ONE);
+}
+
+TEST_F(ShaderParserTest, ParseShaderAnimMapManyFrames) {
+  for (int i = 0; i < 10; ++i) {
+    CreateFile("textures/c/f" + std::to_string(i) + ".tga", "");
+  }
+  CreateShaderFile("anim_many.shader", R"(
+textures/anim_many
+{
+    {
+        animMap 10 textures/c/f0.tga textures/c/f1.tga textures/c/f2.tga textures/c/f3.tga textures/c/f4.tga textures/c/f5.tga textures/c/f6.tga textures/c/f7.tga textures/c/f8.tga textures/c/f9.tga
+    }
+}
+)");
+
+  auto files = ListQ3ShaderScripts(*vfs_);
+  auto shaders = ParseShaderScripts(*vfs_, files);
+  const auto& shader = shaders["textures/anim_many"];
+
+  ASSERT_EQ(shader.texture_layers.size(), 1);
+  // All frames on the line are kept (no cap).
+  EXPECT_EQ(shader.texture_layers[0].anim_frame_paths.size(), 10);
+}
+
 }  // namespace
 }  // namespace ioq3_map

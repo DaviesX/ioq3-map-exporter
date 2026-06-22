@@ -217,6 +217,89 @@ TEST(SaverTest, SaveSceneWithTexture) {
   std::filesystem::remove_all(temp_dir);
 }
 
+TEST(SaverTest, SaveAnimMapLayer) {
+  std::filesystem::path temp_dir =
+      std::filesystem::temp_directory_path() / "sh_baker_test_animmap";
+  std::filesystem::remove_all(temp_dir);
+  std::filesystem::create_directories(temp_dir);
+
+  // Three animation frames as source textures.
+  std::filesystem::path src_dir = temp_dir / "anim";
+  std::filesystem::create_directories(src_dir);
+  std::vector<std::filesystem::path> frames;
+  for (int i = 0; i < 3; ++i) {
+    std::filesystem::path p =
+        src_dir / ("frame" + std::to_string(i) + ".png");
+    unsigned char pixels[] = {static_cast<unsigned char>(i * 80), 0, 0};
+    stbi_write_png(p.string().c_str(), 1, 1, 3, pixels, 3);
+    frames.push_back(p);
+  }
+
+  // Material with a single animated layer. Frame 0 is the representative
+  // texture, mirroring what the parser/scene builder produce.
+  Scene scene;
+  Material mat;
+  mat.name = "AnimMat";
+  mat.albedo.file_path = frames[0];
+  Q3TextureLayer layer;
+  layer.path = frames[0];
+  layer.anim_frame_paths = frames;
+  layer.anim_frequency = 5.0f;
+  mat.texture_layers.push_back(layer);
+  scene.materials[0] = mat;
+
+  Geometry geo;
+  geo.vertices = {Eigen::Vector3f(0, 0, 0), Eigen::Vector3f(1, 0, 0),
+                  Eigen::Vector3f(0, 1, 0)};
+  geo.indices = {0, 1, 2};
+  geo.material_id = 0;
+  scene.geometries[0] = geo;
+
+  std::filesystem::path output_gltf = temp_dir / "output" / "scene.gltf";
+  std::filesystem::create_directories(output_gltf.parent_path());
+  ASSERT_TRUE(SaveScene(scene, output_gltf));
+
+  tinygltf::Model model;
+  tinygltf::TinyGLTF loader;
+  std::string err, warn;
+  ASSERT_TRUE(loader.LoadASCIIFromFile(&model, &err, &warn,
+                                       output_gltf.string()))
+      << err;
+
+  ASSERT_EQ(model.materials.size(), 1);
+  auto ext_it = model.materials[0].extensions.find("SH_material_layers");
+  ASSERT_NE(ext_it, model.materials[0].extensions.end());
+  ASSERT_TRUE(ext_it->second.Has("layers"));
+  const auto& layers = ext_it->second.Get("layers");
+  ASSERT_EQ(layers.ArrayLen(), 1u);
+  const auto& layer0 = layers.Get(0);
+
+  ASSERT_TRUE(layer0.Has("animFreq"));
+  EXPECT_DOUBLE_EQ(layer0.Get("animFreq").Get<double>(), 5.0);
+
+  ASSERT_TRUE(layer0.Has("animFrames"));
+  const auto& anim_frames = layer0.Get("animFrames");
+  ASSERT_EQ(anim_frames.ArrayLen(), 3u);
+
+  // texture (frame 0) and animFrames[0] resolve to the same texture index.
+  ASSERT_TRUE(layer0.Has("texture"));
+  EXPECT_EQ(layer0.Get("texture").Get("index").Get<int>(),
+            anim_frames.Get(0).Get<int>());
+
+  // Per-frame PNGs were written. Frame 0 is the layer's representative texture
+  // (`_layer0.png`); subsequent frames are `_layer0_frame{f}.png`.
+  std::filesystem::path folder = "anim@frame0";
+  std::filesystem::path tex_dir = output_gltf.parent_path() / folder;
+  EXPECT_TRUE(std::filesystem::exists(tex_dir / "anim@frame0_layer0.png"));
+  for (int f = 1; f < 3; ++f) {
+    EXPECT_TRUE(std::filesystem::exists(
+        tex_dir / ("anim@frame0_layer0_frame" + std::to_string(f) + ".png")))
+        << "missing frame " << f;
+  }
+
+  std::filesystem::remove_all(temp_dir);
+}
+
 TEST(SaverTest, SaveComplexScene) {
   Scene scene;
 
