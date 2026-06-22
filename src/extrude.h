@@ -13,9 +13,13 @@ namespace ioq3_map {
 // appended, offset by `thickness` (meters) along the per-vertex -normal, plus
 // side-wall quads along the surface's boundary edges, forming a watertight shell.
 //
-// `config.inset` (meters) pulls the back rim toward the surface centroid so the
-// side walls tilt slightly inward and never land coplanar with a neighbouring
-// face's front cap (e.g. the parallel sides of a cube), which would z-fight.
+// `config.inset` (meters) pushes each back-rim vertex perpendicularly into the
+// surface interior (per boundary edge, not toward the global centroid) so every
+// side wall tilts off neighbouring faces' planes and never lands coplanar with a
+// neighbour's front cap (e.g. the parallel sides of a cube), which would z-fight.
+// The per-edge direction clears elongated/oblique edges that a centroid pull
+// leaves nearly coplanar; the pull is clamped by the centroid distance so small
+// surfaces can't overshoot.
 //
 // All new geometry is appended into the same `geo`, preserving the one-Geometry
 // -> one-glTF-primitive mapping that the manifest relies on. No-op when
