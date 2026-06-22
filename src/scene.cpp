@@ -8,6 +8,7 @@
 
 #include "bsp.h"
 #include "bsp_geometry.h"
+#include "extrude.h"
 #include "shader_parser.h"
 #include "triangulation.h"
 
@@ -114,12 +115,11 @@ Scene AssembleBSPObjects(
     const BSP& bsp,
     const std::unordered_map<BSPSurfaceIndex, BSPGeometry>& bsp_geometries,
     const std::unordered_map<BSPTextureIndex, BSPMaterial>& bsp_materials,
-    const std::vector<Entity>& bsp_entities,
-    bool collect_point_or_spot_lights) {
+    const std::vector<Entity>& bsp_entities, const AssemblyConfig& config) {
   Scene scene;
 
   // 1. Process Entities (Lights)
-  if (collect_point_or_spot_lights) {
+  if (config.collect_point_or_spot_lights) {
     // These are typically virtual lights that never appear in the final
     // rendering, but are used for artistic control. If physical correctness
     // is desired, these should be ignored.
@@ -245,6 +245,17 @@ Scene AssembleBSPObjects(
     } else {
       LOG(ERROR) << "Unknown primitive type: " << geo.primitive.index();
       continue;
+    }
+
+    // Solidify thin opaque walls into closed shells so the path-tracer and
+    // shadow maps see physical geometry. Only planar polygons are solidified
+    // for now (triangle soups and curved patches are out of scope). Skip
+    // emissive surfaces (their back/sides would emit too) and two-sided
+    // surfaces (grates/fences/foliage, where a solid shell is nonsensical).
+    const bool is_polygon = std::holds_alternative<BSPPolygon>(geo.primitive);
+    if (is_polygon && config.extrusion.thickness > 0.0f &&
+        mat.emission_intensity <= 0.0f && mat.cull != Q3CullType::NONE) {
+      SolidifyGeometry(config.extrusion, &out_geo);
     }
 
     scene.geometries.emplace(surface_idx, std::move(out_geo));

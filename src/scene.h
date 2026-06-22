@@ -42,6 +42,23 @@ struct Material {
   Q3CullType cull = Q3CullType::FRONT;
 };
 
+// Parameters controlling wall solidification (see extrude.h). Distances are in
+// meters (glTF space). A zero thickness disables solidification.
+struct ExtrusionConfig {
+  float thickness = 0.0f;
+  float inset = 0.0f;
+};
+
+// Options for AssembleBSPObjects.
+struct AssemblyConfig {
+  // Collect point/spot lights from entities. These are typically virtual lights
+  // for artistic control; disable for physical correctness.
+  bool collect_point_or_spot_lights = false;
+
+  // Solidify thin opaque surfaces into closed shells.
+  ExtrusionConfig extrusion;
+};
+
 // --- Geometry/Triangle Mesh ---
 struct Geometry {
   std::vector<Eigen::Vector3f> vertices;
@@ -88,11 +105,14 @@ struct Scene {
   std::optional<Sky> sky;
 };
 
+// When `config.extrusion.thickness > 0`, opaque single-sided surfaces are
+// solidified into closed shells (see extrude.h). The default config disables
+// both light collection and solidification.
 Scene AssembleBSPObjects(
     const BSP& bsp,
     const std::unordered_map<BSPSurfaceIndex, BSPGeometry>& bsp_geometries,
     const std::unordered_map<BSPTextureIndex, BSPMaterial>& bsp_materials,
-    const std::vector<Entity>& bsp_entities, bool collect_point_or_spot_lights);
+    const std::vector<Entity>& bsp_entities, const AssemblyConfig& config = {});
 
 }  // namespace ioq3_map
 

@@ -23,6 +23,13 @@ DEFINE_string(output, "", "Output directory");
 DEFINE_bool(collect_point_or_spot_lights, false,
             "Collect point and spot lights from entities");
 
+DEFINE_double(extrude_thickness, 8.0,
+              "Wall extrusion thickness in Q3 units (1 unit = 1 inch) to "
+              "solidify thin surfaces. 0 disables.");
+DEFINE_double(extrude_inset, 0.25,
+              "Back-rim inward inset toward the surface centroid, in Q3 units, "
+              "to avoid coplanar side-wall z-fighting.");
+
 int main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   FLAGS_logtostderr = 1;
@@ -101,9 +108,21 @@ int main(int argc, char* argv[]) {
 
   // 8. Assemble Scene
   LOG(INFO) << "Assembling Scene...";
-  auto scene = ioq3_map::AssembleBSPObjects(*bsp, bsp_geometries, bsp_materials,
-                                            bsp_entities,
-                                            FLAGS_collect_point_or_spot_lights);
+  // Convert extrusion distances from Q3 units (inches) to meters to match the
+  // glTF-space Geometry that the solidifier operates on.
+  constexpr float kInchesToMeters = 0.0254f;
+  ioq3_map::AssemblyConfig assembly_config{
+      .collect_point_or_spot_lights = FLAGS_collect_point_or_spot_lights,
+      .extrusion =
+          {
+              .thickness =
+                  static_cast<float>(FLAGS_extrude_thickness) * kInchesToMeters,
+              .inset =
+                  static_cast<float>(FLAGS_extrude_inset) * kInchesToMeters,
+          },
+  };
+  auto scene = ioq3_map::AssembleBSPObjects(
+      *bsp, bsp_geometries, bsp_materials, bsp_entities, assembly_config);
   LOG(INFO) << "Scene Assembled. Total Geometries: " << scene.geometries.size();
   LOG(INFO) << "Total Materials: " << scene.materials.size();
   LOG(INFO) << "Total Lights: " << scene.lights.size();
