@@ -116,8 +116,7 @@ Scene AssembleBSPObjects(
     const std::unordered_map<BSPSurfaceIndex, BSPGeometry>& bsp_geometries,
     const std::unordered_map<BSPTextureIndex, BSPMaterial>& bsp_materials,
     const std::vector<Entity>& bsp_entities,
-    bool collect_point_or_spot_lights, float extrude_thickness,
-    float extrude_inset) {
+    bool collect_point_or_spot_lights, const ExtrusionConfig& extrusion) {
   Scene scene;
 
   // 1. Process Entities (Lights)
@@ -253,9 +252,9 @@ Scene AssembleBSPObjects(
     // shadow maps see physical geometry. Skip emissive surfaces (their back/
     // sides would emit too) and two-sided surfaces (grates/fences/foliage,
     // where a solid shell is nonsensical).
-    if (extrude_thickness > 0.0f && mat.emission_intensity <= 0.0f &&
+    if (extrusion.thickness > 0.0f && mat.emission_intensity <= 0.0f &&
         mat.cull != Q3CullType::NONE) {
-      SolidifyGeometry(&out_geo, extrude_thickness, extrude_inset);
+      SolidifyGeometry(extrusion, &out_geo);
     }
 
     scene.geometries.emplace(surface_idx, std::move(out_geo));

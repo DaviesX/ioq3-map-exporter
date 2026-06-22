@@ -53,14 +53,14 @@ std::map<std::pair<int, int>, int> EdgeUseCounts(const Geometry& g) {
 TEST(Extrude, DisabledIsNoOp) {
   Geometry g = MakeQuad();
   Geometry before = g;
-  SolidifyGeometry(&g, 0.0f, 0.1f);
+  SolidifyGeometry({.thickness = 0.0f, .inset = 0.1f}, &g);
   EXPECT_EQ(g.vertices.size(), before.vertices.size());
   EXPECT_EQ(g.indices.size(), before.indices.size());
 }
 
 TEST(Extrude, FrontGeometryPreserved) {
   Geometry g = MakeQuad();
-  SolidifyGeometry(&g, 0.2f, 0.01f);
+  SolidifyGeometry({.thickness = 0.2f, .inset = 0.01f}, &g);
   // The original 4 vertices and 6 indices must be untouched at the front.
   ASSERT_GE(g.vertices.size(), 8u);
   EXPECT_FLOAT_EQ(g.vertices[1].x(), 1.0f);
@@ -74,7 +74,7 @@ TEST(Extrude, BackCapOffsetAndInset) {
   Geometry g = MakeQuad();
   const float thickness = 0.2f;
   const float inset = 0.05f;
-  SolidifyGeometry(&g, thickness, inset);
+  SolidifyGeometry({.thickness = thickness, .inset = inset}, &g);
 
   ASSERT_EQ(g.vertices.size(), 8u);  // 4 front + 4 back (rim reused for sides).
   // Back vertex i corresponds to front vertex i, pushed to z = -thickness and
@@ -94,7 +94,7 @@ TEST(Extrude, BackCapOffsetAndInset) {
 
 TEST(Extrude, ShellIsWatertight) {
   Geometry g = MakeQuad();
-  SolidifyGeometry(&g, 0.2f, 0.01f);
+  SolidifyGeometry({.thickness = 0.2f, .inset = 0.01f}, &g);
   // A closed manifold: every edge shared by exactly two triangles.
   for (const auto& [edge, count] : EdgeUseCounts(g)) {
     EXPECT_EQ(count, 2) << "edge (" << edge.first << "," << edge.second << ")";
@@ -103,7 +103,7 @@ TEST(Extrude, ShellIsWatertight) {
 
 TEST(Extrude, BackCapWindingFacesAway) {
   Geometry g = MakeQuad();
-  SolidifyGeometry(&g, 0.2f, 0.0f);
+  SolidifyGeometry({.thickness = 0.2f, .inset = 0.0f}, &g);
   // The back-cap triangles begin right after the 6 front indices. Their
   // geometric normal (by winding) must point along -Z.
   ASSERT_GE(g.indices.size(), 12u);
@@ -126,7 +126,7 @@ TEST(Extrude, CubeFacesNoCoplanarOverlap) {
   px.texture_uvs = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
   px.lightmap_uvs = px.texture_uvs;
   px.indices = {0, 1, 2, 0, 2, 3};
-  SolidifyGeometry(&px, thickness, inset);
+  SolidifyGeometry({.thickness = thickness, .inset = inset}, &px);
 
   // Without the inset, the +X face's side walls would lie exactly in the y=0,
   // y=1, z=0, z=1 planes — coplanar with the cube's other faces -> z-fighting.

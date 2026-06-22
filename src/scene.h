@@ -42,6 +42,13 @@ struct Material {
   Q3CullType cull = Q3CullType::FRONT;
 };
 
+// Parameters controlling wall solidification (see extrude.h). Distances are in
+// meters (glTF space). A zero thickness disables solidification.
+struct ExtrusionConfig {
+  float thickness = 0.0f;
+  float inset = 0.0f;
+};
+
 // --- Geometry/Triangle Mesh ---
 struct Geometry {
   std::vector<Eigen::Vector3f> vertices;
@@ -88,15 +95,14 @@ struct Scene {
   std::optional<Sky> sky;
 };
 
-// `extrude_thickness` / `extrude_inset` are in meters (already converted from Q3
-// units). When `extrude_thickness > 0`, opaque single-sided surfaces are
-// solidified into closed shells (see extrude.h). Pass 0 to disable.
+// When `extrusion.thickness > 0`, opaque single-sided surfaces are solidified
+// into closed shells (see extrude.h). The default config disables it.
 Scene AssembleBSPObjects(
     const BSP& bsp,
     const std::unordered_map<BSPSurfaceIndex, BSPGeometry>& bsp_geometries,
     const std::unordered_map<BSPTextureIndex, BSPMaterial>& bsp_materials,
     const std::vector<Entity>& bsp_entities, bool collect_point_or_spot_lights,
-    float extrude_thickness = 0.0f, float extrude_inset = 0.0f);
+    const ExtrusionConfig& extrusion = {});
 
 }  // namespace ioq3_map
 
