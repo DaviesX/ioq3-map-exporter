@@ -418,6 +418,13 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
   // 2. Create Root "Worldspawn" Node
   tinygltf::Node world_node;
   world_node.name = "Worldspawn";
+  // Carry the Z-up -> Y-up axis conversion once here. Child geometry and light
+  // nodes are stored in the Quake 3 Z-up convention (scaled to meters) and
+  // inherit this rotation, so the conversion stays a single explicit node
+  // transform instead of being baked into every vertex. tinygltf node.matrix is
+  // column-major, matching Eigen's default storage order.
+  Eigen::Matrix4f root_matrix = Q3ToGltfRootTransform().matrix();
+  world_node.matrix.assign(root_matrix.data(), root_matrix.data() + 16);
   // We will push this node last to ensure all children indices are valid,
   // or we can push it first and update children later.
   // Let's push it first to be node 0.
