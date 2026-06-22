@@ -1,6 +1,7 @@
 #include "saver.h"
 
 #include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 #include <tiny_gltf.h>
 
 #include <cmath>
@@ -543,6 +544,74 @@ TEST(SaverTest, SaveWithBlackAlpha) {
   EXPECT_EQ(data[12 + 3], 255);
 
   stbi_image_free(data);
+  std::filesystem::remove_all(temp_dir);
+}
+
+// Phase 6: SaveScene must emit a manifest.json mapping each BSP surface index to
+// its glTF primitive index and material name, in deterministic (sorted) order.
+TEST(SaverTest, SaveSceneWritesManifest) {
+  std::filesystem::path temp_dir =
+      std::filesystem::temp_directory_path() / "sh_baker_test_manifest";
+  std::filesystem::remove_all(temp_dir);
+  std::filesystem::create_directories(temp_dir);
+
+  Scene scene;
+
+  // Three materials with distinct names.
+  scene.materials[10].name = "textures/base_wall/concrete";
+  scene.materials[20].name = "textures/base_floor/metal";
+  scene.materials[30].name = "textures/base_trim/wood";
+
+  // Three geometries inserted with non-sorted, non-contiguous surface indices.
+  auto make_geo = [](BSPTextureIndex material_id) {
+    Geometry geo;
+    geo.vertices = {Eigen::Vector3f(0, 0, 0), Eigen::Vector3f(1, 0, 0),
+                    Eigen::Vector3f(0, 1, 0)};
+    geo.indices = {0, 1, 2};
+    geo.material_id = material_id;
+    return geo;
+  };
+  scene.geometries[7] = make_geo(20);
+  scene.geometries[3] = make_geo(10);
+  scene.geometries[42] = make_geo(30);
+
+  std::filesystem::path output_path = temp_dir / "scene.gltf";
+  ASSERT_TRUE(SaveScene(scene, output_path));
+
+  // Manifest must be written next to scene.gltf.
+  std::filesystem::path manifest_path = temp_dir / "manifest.json";
+  ASSERT_TRUE(std::filesystem::exists(manifest_path));
+
+  std::ifstream manifest_file(manifest_path);
+  nlohmann::json manifest = nlohmann::json::parse(manifest_file);
+  ASSERT_TRUE(manifest.contains("surface_mapping"));
+  const auto& mapping = manifest["surface_mapping"];
+
+  // One entry per geometry.
+  ASSERT_EQ(mapping.size(), 3u);
+
+  // Sorted by bsp_surface_index, with contiguous glTF primitive indices 0..N-1.
+  EXPECT_EQ(mapping[0]["bsp_surface_index"].get<int>(), 3);
+  EXPECT_EQ(mapping[1]["bsp_surface_index"].get<int>(), 7);
+  EXPECT_EQ(mapping[2]["bsp_surface_index"].get<int>(), 42);
+  for (size_t i = 0; i < mapping.size(); ++i) {
+    EXPECT_EQ(mapping[i]["gltf_primitive_index"].get<int>(),
+              static_cast<int>(i));
+  }
+
+  // Material names match the surface they belong to (looked up by index).
+  auto material_for = [&](int surface) -> std::string {
+    for (const auto& entry : mapping) {
+      if (entry["bsp_surface_index"].get<int>() == surface) {
+        return entry["material"].get<std::string>();
+      }
+    }
+    return "<missing>";
+  };
+  EXPECT_EQ(material_for(3), "textures/base_wall/concrete");
+  EXPECT_EQ(material_for(7), "textures/base_floor/metal");
+  EXPECT_EQ(material_for(42), "textures/base_trim/wood");
+
   std::filesystem::remove_all(temp_dir);
 }
 

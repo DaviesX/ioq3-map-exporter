@@ -1,6 +1,7 @@
 #include "saver.h"
 
 #include <glog/logging.h>
+#include <nlohmann/json.hpp>
 #include <tiny_gltf.h>
 
 #include <algorithm>
@@ -8,6 +9,8 @@
 #include <filesystem>
 #include <map>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 // Include stb headers for image processing
 #include <stb_image.h>
@@ -425,7 +428,39 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
   gscene.nodes.push_back(world_node_idx);
 
   // 3. Export Geometries
+  //
+  // Iterate geometries in ascending BSP surface index order (rather than the
+  // unordered_map hash order) so that both scene.gltf and the Phase 6
+  // manifest.json are deterministic and diffable across re-exports. Each
+  // geometry becomes exactly one mesh holding one primitive, so the running
+  // counter below is the global flat glTF primitive index.
+  std::vector<std::pair<BSPSurfaceIndex, const Geometry*>> sorted_geometries;
+  sorted_geometries.reserve(scene.geometries.size());
   for (const auto& [bsp_surf_idx, geo] : scene.geometries) {
+    sorted_geometries.emplace_back(bsp_surf_idx, &geo);
+  }
+  std::sort(sorted_geometries.begin(), sorted_geometries.end(),
+            [](const auto& a, const auto& b) { return a.first < b.first; });
+
+  // Phase 6 manifest: bsp_surface_index -> gltf_primitive_index + material.
+  nlohmann::json surface_mapping = nlohmann::json::array();
+  int gltf_primitive_index = 0;
+
+  for (const auto& [bsp_surf_idx, geo_ptr] : sorted_geometries) {
+    const Geometry& geo = *geo_ptr;
+
+    std::string material_name;
+    auto mat_name_it = scene.materials.find(geo.material_id);
+    if (mat_name_it != scene.materials.end()) {
+      material_name = mat_name_it->second.name;
+    }
+    surface_mapping.push_back({
+        {"bsp_surface_index", static_cast<int>(bsp_surf_idx)},
+        {"gltf_primitive_index", gltf_primitive_index},
+        {"material", material_name},
+    });
+    ++gltf_primitive_index;
+
     // Create Mesh
     tinygltf::Mesh mesh;
     tinygltf::Primitive prim;
@@ -704,9 +739,33 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
 
     std::ofstream gltf_file(path);
     gltf_file << json_str;
-    return true;
+  } else {
+    return false;
   }
-  return false;
+
+  // 3. Write Phase 6 manifest (BSP surface index -> glTF primitive index +
+  // material name), alongside scene.gltf.
+  {
+    nlohmann::json manifest;
+    manifest["surface_mapping"] = std::move(surface_mapping);
+
+    std::filesystem::path manifest_path =
+        path.parent_path() / "manifest.json";
+    std::ofstream manifest_file(manifest_path);
+    if (!manifest_file) {
+      LOG(ERROR) << "Failed to open manifest file for writing: "
+                 << manifest_path;
+      return false;
+    }
+    manifest_file << manifest.dump(2);
+    manifest_file.close();
+    if (!manifest_file) {
+      LOG(ERROR) << "Failed to write manifest data to " << manifest_path;
+      return false;
+    }
+  }
+
+  return true;
 }
 
 }  // namespace ioq3_map
