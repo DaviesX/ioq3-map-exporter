@@ -248,11 +248,13 @@ Scene AssembleBSPObjects(
     }
 
     // Solidify thin opaque walls into closed shells so the path-tracer and
-    // shadow maps see physical geometry. Skip emissive surfaces (their back/
-    // sides would emit too) and two-sided surfaces (grates/fences/foliage,
-    // where a solid shell is nonsensical).
-    if (config.extrusion.thickness > 0.0f && mat.emission_intensity <= 0.0f &&
-        mat.cull != Q3CullType::NONE) {
+    // shadow maps see physical geometry. Only planar polygons are solidified
+    // for now (triangle soups and curved patches are out of scope). Skip
+    // emissive surfaces (their back/sides would emit too) and two-sided
+    // surfaces (grates/fences/foliage, where a solid shell is nonsensical).
+    const bool is_polygon = std::holds_alternative<BSPPolygon>(geo.primitive);
+    if (is_polygon && config.extrusion.thickness > 0.0f &&
+        mat.emission_intensity <= 0.0f && mat.cull != Q3CullType::NONE) {
       SolidifyGeometry(config.extrusion, &out_geo);
     }
 
