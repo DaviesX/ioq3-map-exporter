@@ -753,10 +753,16 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
         path.parent_path() / "manifest.json";
     std::ofstream manifest_file(manifest_path);
     if (!manifest_file) {
-      LOG(ERROR) << "Failed to write manifest to " << manifest_path;
+      LOG(ERROR) << "Failed to open manifest file for writing: "
+                 << manifest_path;
       return false;
     }
     manifest_file << manifest.dump(2);
+    manifest_file.close();
+    if (!manifest_file) {
+      LOG(ERROR) << "Failed to write manifest data to " << manifest_path;
+      return false;
+    }
   }
 
   return true;
