@@ -61,6 +61,7 @@ add_library(ioq3_map SHARED
     src/bsp_geometry.cpp
     src/bsp_material.cpp
     src/bsp_material.h
+    src/extrude.cpp
     src/saver.cpp
     src/scene.cpp
     src/shader_parser.cpp
@@ -96,6 +97,7 @@ add_executable(ioq3_map_exporter_test
     src/bsp_entity_test.cpp
     src/bsp_geometry_test.cpp
     src/bsp_material_test.cpp
+    src/extrude_test.cpp
     src/shader_parser_test.cpp
     src/saver_test.cpp
     src/scene_test.cpp

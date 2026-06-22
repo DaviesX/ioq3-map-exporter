@@ -8,6 +8,7 @@
 
 #include "bsp.h"
 #include "bsp_geometry.h"
+#include "extrude.h"
 #include "shader_parser.h"
 #include "triangulation.h"
 
@@ -115,7 +116,8 @@ Scene AssembleBSPObjects(
     const std::unordered_map<BSPSurfaceIndex, BSPGeometry>& bsp_geometries,
     const std::unordered_map<BSPTextureIndex, BSPMaterial>& bsp_materials,
     const std::vector<Entity>& bsp_entities,
-    bool collect_point_or_spot_lights) {
+    bool collect_point_or_spot_lights, float extrude_thickness,
+    float extrude_inset) {
   Scene scene;
 
   // 1. Process Entities (Lights)
@@ -245,6 +247,15 @@ Scene AssembleBSPObjects(
     } else {
       LOG(ERROR) << "Unknown primitive type: " << geo.primitive.index();
       continue;
+    }
+
+    // Solidify thin opaque walls into closed shells so the path-tracer and
+    // shadow maps see physical geometry. Skip emissive surfaces (their back/
+    // sides would emit too) and two-sided surfaces (grates/fences/foliage,
+    // where a solid shell is nonsensical).
+    if (extrude_thickness > 0.0f && mat.emission_intensity <= 0.0f &&
+        mat.cull != Q3CullType::NONE) {
+      SolidifyGeometry(&out_geo, extrude_thickness, extrude_inset);
     }
 
     scene.geometries.emplace(surface_idx, std::move(out_geo));

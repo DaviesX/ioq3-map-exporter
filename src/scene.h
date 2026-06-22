@@ -88,11 +88,15 @@ struct Scene {
   std::optional<Sky> sky;
 };
 
+// `extrude_thickness` / `extrude_inset` are in meters (already converted from Q3
+// units). When `extrude_thickness > 0`, opaque single-sided surfaces are
+// solidified into closed shells (see extrude.h). Pass 0 to disable.
 Scene AssembleBSPObjects(
     const BSP& bsp,
     const std::unordered_map<BSPSurfaceIndex, BSPGeometry>& bsp_geometries,
     const std::unordered_map<BSPTextureIndex, BSPMaterial>& bsp_materials,
-    const std::vector<Entity>& bsp_entities, bool collect_point_or_spot_lights);
+    const std::vector<Entity>& bsp_entities, bool collect_point_or_spot_lights,
+    float extrude_thickness = 0.0f, float extrude_inset = 0.0f);
 
 }  // namespace ioq3_map
 
