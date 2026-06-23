@@ -181,5 +181,47 @@ TEST_F(SceneTest, AssembleBSPObjectsExtractsEntities) {
   EXPECT_TRUE(found_spot);
 }
 
+TEST_F(SceneTest, AssembleBSPObjectsTagsBaseLayer) {
+  // layer 0: scaled (non-NoOp); layer 1: static (NoOp); layer 2: scroll
+  // (non-NoOp). The albedo source is the last static layer -> index 1.
+  BSPMaterial mat;
+  mat.name = "textures/base/multi";
+  Q3TextureLayer l0;
+  l0.path = "textures/base/l0.tga";
+  l0.tcmod = Q3TCModScale{2.f, 2.f};
+  Q3TextureLayer l1;
+  l1.path = "textures/base/l1.tga";  // tcmod defaults to Q3TCModNoOp
+  Q3TextureLayer l2;
+  l2.path = "textures/base/l2.tga";
+  l2.tcmod = Q3TCModScroll{1.f, 0.f};
+  mat.texture_layers = {l0, l1, l2};
+  materials_[0] = mat;
+
+  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_, entities_);
+
+  ASSERT_EQ(scene.materials.count(0), 1u);
+  EXPECT_EQ(scene.materials.at(0).albedo_layer, 1);
+  EXPECT_EQ(scene.materials.at(0).albedo.file_path, "textures/base/l1.tga");
+}
+
+TEST_F(SceneTest, AssembleBSPObjectsBaseLayerFallsBackToZero) {
+  // No static layer -> fall back to layer 0.
+  BSPMaterial mat;
+  mat.name = "textures/base/allmod";
+  Q3TextureLayer l0;
+  l0.path = "textures/base/a.tga";
+  l0.tcmod = Q3TCModScale{2.f, 2.f};
+  Q3TextureLayer l1;
+  l1.path = "textures/base/b.tga";
+  l1.tcmod = Q3TCModScroll{1.f, 0.f};
+  mat.texture_layers = {l0, l1};
+  materials_[0] = mat;
+
+  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_, entities_);
+
+  ASSERT_EQ(scene.materials.count(0), 1u);
+  EXPECT_EQ(scene.materials.at(0).albedo_layer, 0);
+}
+
 }  // namespace
 }  // namespace ioq3_map

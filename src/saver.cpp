@@ -268,6 +268,10 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
       
       sh_ext["cullMode"] = tinygltf::Value(cullStr);
 
+      // Index of the layer whose texture is the albedo source; the modern
+      // `_albedo` map substitutes for this layer when consumers composite.
+      sh_ext["baseLayer"] = tinygltf::Value(mat.albedo_layer);
+
       tinygltf::Value::Array layers_array;
       for (size_t i = 0; i < mat.texture_layers.size(); ++i) {
         const auto& layer = mat.texture_layers[i];
