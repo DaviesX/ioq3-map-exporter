@@ -268,6 +268,20 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
       
       sh_ext["cullMode"] = tinygltf::Value(cullStr);
 
+      // Index of the layer whose texture is the albedo source; the modern
+      // `_albedo` map substitutes for this layer when consumers composite.
+      // Guard against an out-of-range index so we never emit an invalid
+      // reference (e.g. from a hand-built material).
+      int base_layer = mat.albedo_layer;
+      if (base_layer < 0 ||
+          base_layer >= static_cast<int>(mat.texture_layers.size())) {
+        LOG(WARNING) << "Material " << mat.name << " has invalid albedo_layer "
+                     << base_layer << " (texture_layers size is "
+                     << mat.texture_layers.size() << "). Defaulting to 0.";
+        base_layer = 0;
+      }
+      sh_ext["baseLayer"] = tinygltf::Value(base_layer);
+
       tinygltf::Value::Array layers_array;
       for (size_t i = 0; i < mat.texture_layers.size(); ++i) {
         const auto& layer = mat.texture_layers[i];

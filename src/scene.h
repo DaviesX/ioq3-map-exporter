@@ -38,6 +38,11 @@ struct Material {
 
   // Q3 texture layers for custom glTF extension
   std::vector<Q3TextureLayer> texture_layers;
+  // Index into `texture_layers` of the layer whose texture was chosen as the
+  // albedo source (the modern `_albedo` map replaces this layer at load time).
+  // Emitted as `baseLayer` in SH_material_layers so consumers can substitute the
+  // modern albedo into the correct layer when compositing.
+  int albedo_layer = 0;
   int surface_flags = 0;
   Q3CullType cull = Q3CullType::FRONT;
 };

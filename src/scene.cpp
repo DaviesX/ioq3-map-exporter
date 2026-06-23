@@ -186,11 +186,14 @@ Scene AssembleBSPObjects(
     mat.texture_layers = bsp_mat.texture_layers;
     mat.surface_flags = bsp_mat.surface_flags;
     mat.cull = bsp_mat.cull;
-    // TODO: Support multiple texture layers.
-    for (const auto& layer : bsp_mat.texture_layers) {
+    // Pick the albedo source: the last static (no-tcMod) layer, else layer 0.
+    // Record its index so SH_material_layers can tag the base layer.
+    for (size_t i = 0; i < bsp_mat.texture_layers.size(); ++i) {
+      const auto& layer = bsp_mat.texture_layers[i];
       if (std::holds_alternative<Q3TCModNoOp>(layer.tcmod)) {
         mat.albedo.file_path = layer.path;
         mat.albedo.black_as_alpha = IsBlackAsAlpha(layer);
+        mat.albedo_layer = static_cast<int>(i);
       } else {
         // TODO: Implement tcmod. This links to the multi-texture support. We
         // will skip this for now.
@@ -201,6 +204,7 @@ Scene AssembleBSPObjects(
       const auto& layer = bsp_mat.texture_layers.front();
       mat.albedo.file_path = layer.path;
       mat.albedo.black_as_alpha = IsBlackAsAlpha(layer);
+      mat.albedo_layer = 0;
     }
 
     // Emission

@@ -270,6 +270,11 @@ TEST(SaverTest, SaveAnimMapLayer) {
   ASSERT_EQ(model.materials.size(), 1);
   auto ext_it = model.materials[0].extensions.find("SH_material_layers");
   ASSERT_NE(ext_it, model.materials[0].extensions.end());
+
+  // Single layer -> base layer index 0.
+  ASSERT_TRUE(ext_it->second.Has("baseLayer"));
+  EXPECT_EQ(ext_it->second.Get("baseLayer").Get<int>(), 0);
+
   ASSERT_TRUE(ext_it->second.Has("layers"));
   const auto& layers = ext_it->second.Get("layers");
   ASSERT_EQ(layers.ArrayLen(), 1u);
