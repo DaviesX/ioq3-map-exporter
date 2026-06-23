@@ -186,7 +186,6 @@ Scene AssembleBSPObjects(
     mat.texture_layers = bsp_mat.texture_layers;
     mat.surface_flags = bsp_mat.surface_flags;
     mat.cull = bsp_mat.cull;
-    // TODO: Support multiple texture layers.
     // Pick the albedo source: the last static (no-tcMod) layer, else layer 0.
     // Record its index so SH_material_layers can tag the base layer.
     for (size_t i = 0; i < bsp_mat.texture_layers.size(); ++i) {
