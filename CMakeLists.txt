@@ -62,6 +62,7 @@ add_library(ioq3_map SHARED
     src/bsp_material.cpp
     src/bsp_material.h
     src/extrude.cpp
+    src/merger.cpp
     src/saver.cpp
     src/scene.cpp
     src/shader_parser.cpp
@@ -89,6 +90,10 @@ target_include_directories(ioq3_map PUBLIC
 add_executable(ioq3_map_exporter src/main.cpp)
 target_link_libraries(ioq3_map_exporter PRIVATE ioq3_map)
 
+# Merger Executable: merges an artist-edited export back into the original one.
+add_executable(ioq3_map_merger src/merger_main.cpp)
+target_link_libraries(ioq3_map_merger PRIVATE ioq3_map)
+
 # Tests
 enable_testing()
 add_executable(ioq3_map_exporter_test
@@ -98,6 +103,7 @@ add_executable(ioq3_map_exporter_test
     src/bsp_geometry_test.cpp
     src/bsp_material_test.cpp
     src/extrude_test.cpp
+    src/merger_test.cpp
     src/shader_parser_test.cpp
     src/saver_test.cpp
     src/scene_test.cpp
