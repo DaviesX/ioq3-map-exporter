@@ -182,6 +182,27 @@ TEST(MergeLightsTest, AddsLightsWhenExportHasNone) {
   EXPECT_EQ(dest["extensions"]["KHR_lights_punctual"]["lights"].size(), 1u);
 }
 
+TEST(MergeLightsTest, ToleratesOutOfBoundsChildIndices) {
+  ordered_json artist = MakeGltf(/*num_lights=*/1, /*angle=*/-0.5);
+  // Two lights so LightNode_1 is removed (exercising the node-remap path).
+  ordered_json dest = MakeGltf(/*num_lights=*/2, /*angle=*/0.1);
+  // Inject malformed child references on Worldspawn (node 1).
+  dest["nodes"][1]["children"].push_back(9999);
+  dest["nodes"][1]["children"].push_back(-1);
+
+  PortStats stats;
+  MergeLights(artist, dest, &stats);  // Must not crash / read out of bounds.
+
+  EXPECT_EQ(stats.lights_updated, 1);
+  EXPECT_EQ(stats.lights_removed, 1);
+  // Every surviving child index is in range (malformed ones dropped).
+  for (const auto& c : dest["nodes"][1]["children"]) {
+    int idx = c.get<int>();
+    EXPECT_GE(idx, 0);
+    EXPECT_LT(idx, static_cast<int>(dest["nodes"].size()));
+  }
+}
+
 // ---- PortTextures ----------------------------------------------------------
 
 class PortTexturesTest : public ::testing::Test {

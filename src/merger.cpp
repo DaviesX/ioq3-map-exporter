@@ -90,7 +90,12 @@ void RemoveNodes(ordered_json& doc, const std::set<int>& to_remove) {
   auto remap_list = [&](const ordered_json& list) {
     ordered_json out = ordered_json::array();
     for (const auto& v : list) {
-      int mapped = remap[v.get<int>()];
+      int idx = v.get<int>();
+      if (idx < 0 || idx >= n) {
+        LOG(WARNING) << "Ignoring out-of-bounds node index: " << idx;
+        continue;
+      }
+      int mapped = remap[idx];
       if (mapped >= 0) out.push_back(mapped);
     }
     return out;
@@ -197,17 +202,32 @@ std::vector<int> BuildParentMap(const ordered_json& doc) {
   for (int i = 0; i < n; ++i) {
     const auto& node = doc.at("nodes")[i];
     if (!node.contains("children")) continue;
-    for (const auto& c : node.at("children")) parent[c.get<int>()] = i;
+    for (const auto& c : node.at("children")) {
+      int child = c.get<int>();
+      if (child < 0 || child >= n) {
+        LOG(WARNING) << "Node " << i << " has out-of-bounds child: " << child;
+        continue;
+      }
+      parent[child] = i;
+    }
   }
   return parent;
 }
 
 // Accumulates the world matrix of node `idx` by chaining local matrices from the
-// root down to the node.
+// root down to the node. Guards against malformed parent cycles.
 Eigen::Matrix4d WorldMatrix(const ordered_json& doc,
                             const std::vector<int>& parent, int idx) {
   std::vector<int> chain;
-  for (int i = idx; i >= 0; i = parent[i]) chain.push_back(i);
+  std::vector<char> visited(parent.size(), 0);
+  for (int i = idx; i >= 0 && i < static_cast<int>(parent.size()); i = parent[i]) {
+    if (visited[i]) {
+      LOG(ERROR) << "Cycle detected in node parent chain at node " << i;
+      break;
+    }
+    visited[i] = 1;
+    chain.push_back(i);
+  }
   Eigen::Matrix4d acc = Eigen::Matrix4d::Identity();
   for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
     acc = acc * NodeLocalMatrix(doc.at("nodes")[*it]);
@@ -351,6 +371,11 @@ bool PortTextures(const fs::path& artist_base, const fs::path& export_base,
     }
 
     fs::path rel = fs::relative(src, artist_base, ec);
+    if (ec || rel.empty()) {
+      LOG(ERROR) << "Failed to compute relative path for " << src << ": "
+                 << ec.message();
+      return false;
+    }
     fs::path dst = export_base / rel;
     if (!fs::exists(dst)) {
       LOG(WARNING) << "No export counterpart for artist texture: " << rel;
@@ -392,6 +417,11 @@ bool PortLights(const fs::path& artist_base, const fs::path& export_base,
     return false;
   }
   out << dest.dump();
+  out.close();
+  if (out.fail()) {
+    LOG(ERROR) << "Failed to write export glTF: " << export_path;
+    return false;
+  }
   return true;
 }
 
