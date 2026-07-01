@@ -50,8 +50,23 @@ struct Material {
 // Parameters controlling wall solidification (see extrude.h). Distances are in
 // meters (glTF space). A zero thickness disables solidification.
 struct ExtrusionConfig {
+  // Desired (maximum) shell thickness. The spatially-aware pass may shrink it
+  // where geometry is close behind the wall (see below), but never below
+  // `min_thickness`.
   float thickness = 0.0f;
   float inset = 0.0f;
+  // Safety gap (meters) the shell tries to leave between its back cap and the
+  // nearest surface behind the wall. The shell thickness is clamped to
+  // `backward_clearance - clearance_margin` so it stops this far short of
+  // whatever is behind it (R2 in the design note). Only takes effect when
+  // solidification is given a spatial-query callback.
+  float clearance_margin = 0.01f;
+  // Floor on the shell thickness (meters). Solidification never emits a
+  // degenerate zero-thickness shell — a wall with no room behind it still gets a
+  // shell at least this thick. This is safe: clearance only shrinks when
+  // something is close behind, i.e. space that is already occupied, so the small
+  // overshoot cannot leak into open space.
+  float min_thickness = 0.02f;
 };
 
 // Options for AssembleBSPObjects.
@@ -75,6 +90,16 @@ struct Geometry {
 
   BSPTextureIndex material_id = -1;
   Eigen::Affine3f transform = Eigen::Affine3f::Identity();
+
+  // Occluder-only shells (produced by solidification, see extrude.h) block light
+  // transport in the baker's BVH and the renderer's shadow pass, but never
+  // receive a lightmap chart and never render in the color pass. Visible
+  // surfaces leave this false. Carried into glTF as the SH_occluder extension.
+  bool occluder_only = false;
+  // For occluder shells: the BSP surface index this shell was extruded from,
+  // used only to name the glTF node (`Geometry_<source>_shell`) for debugging.
+  // -1 on real (non-shell) geometry.
+  BSPSurfaceIndex source_surface = -1;
 };
 
 // --- Light ---
@@ -105,6 +130,10 @@ struct Sky {
 // --- Scene ---
 struct Scene {
   std::unordered_map<BSPSurfaceIndex, Geometry> geometries;
+  // Independent occluder-only shells, one per solidified surface. Kept separate
+  // from `geometries` (which is keyed 1:1 by real BSP surface index) because
+  // shells are synthetic and have no BSP face of their own.
+  std::vector<Geometry> occluder_shells;
   std::unordered_map<BSPTextureIndex, Material> materials;
   std::vector<Light> lights;
   std::optional<Sky> sky;

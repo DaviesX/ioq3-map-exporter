@@ -38,6 +38,10 @@ find_package(PkgConfig REQUIRED)
 # This searches for minizip.pc installed by libminizip-dev
 pkg_check_modules(MINIZIP REQUIRED IMPORTED_TARGET minizip)
 
+# Embree 4 (system-installed; same dependency the sh-baker path tracer uses).
+# Provides the BVH used to make wall solidification spatially aware (bvh.cpp).
+find_package(embree 4 REQUIRED)
+
 # stb_image.
 find_path(STB_IMAGE_INCLUDE_DIR NAMES stb_image.h PATH_SUFFIXES stb)
 if(NOT STB_IMAGE_INCLUDE_DIR)
@@ -61,6 +65,7 @@ add_library(ioq3_map SHARED
     src/bsp_geometry.cpp
     src/bsp_material.cpp
     src/bsp_material.h
+    src/bvh.cpp
     src/extrude.cpp
     src/merger.cpp
     src/saver.cpp
@@ -78,6 +83,7 @@ target_link_libraries(ioq3_map PUBLIC
     gflags
     ${MINIZIP_LIBRARIES}
     gstb_image
+    embree
 )
 
 target_include_directories(ioq3_map PUBLIC
@@ -102,6 +108,7 @@ add_executable(ioq3_map_exporter_test
     src/bsp_entity_test.cpp
     src/bsp_geometry_test.cpp
     src/bsp_material_test.cpp
+    src/bvh_test.cpp
     src/extrude_test.cpp
     src/merger_test.cpp
     src/shader_parser_test.cpp

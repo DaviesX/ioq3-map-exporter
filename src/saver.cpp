@@ -141,6 +141,128 @@ int GetOrAddTexture(tinygltf::Model* model,
   return idx;
 }
 
+// Emits `geo` as a mesh + single primitive + node parented under
+// `world_node_idx`. `gltf_material` < 0 leaves the primitive's material unset.
+// When `occluder_only`, the primitive is tagged with the SH_occluder extension
+// and its lightmap UV set (TEXCOORD_1) is suppressed — an occluder shell never
+// receives a lightmap chart.
+void EmitGeometryNode(const Geometry& geo, const std::string& node_name,
+                      int gltf_material, bool occluder_only, int world_node_idx,
+                      tinygltf::Model* model) {
+  tinygltf::Mesh mesh;
+  tinygltf::Primitive prim;
+  prim.mode = TINYGLTF_MODE_TRIANGLES;
+  if (gltf_material >= 0) prim.material = gltf_material;
+
+  // Position (with required min/max bounds).
+  {
+    int view_idx;
+    std::vector<float> buffer_data;
+    buffer_data.reserve(geo.vertices.size() * 3);
+    std::vector<double> min_v = {1e9, 1e9, 1e9};
+    std::vector<double> max_v = {-1e9, -1e9, -1e9};
+    for (const auto& v : geo.vertices) {
+      buffer_data.push_back(v.x());
+      buffer_data.push_back(v.y());
+      buffer_data.push_back(v.z());
+      if (v.x() < min_v[0]) min_v[0] = v.x();
+      if (v.y() < min_v[1]) min_v[1] = v.y();
+      if (v.z() < min_v[2]) min_v[2] = v.z();
+      if (v.x() > max_v[0]) max_v[0] = v.x();
+      if (v.y() > max_v[1]) max_v[1] = v.y();
+      if (v.z() > max_v[2]) max_v[2] = v.z();
+    }
+    if (buffer_data.empty()) {
+      min_v = {0, 0, 0};
+      max_v = {0, 0, 0};
+    }
+    AddBufferView(buffer_data.data(), buffer_data.size() * sizeof(float), 12,
+                  TINYGLTF_TARGET_ARRAY_BUFFER, view_idx, model);
+    prim.attributes["POSITION"] =
+        AddAccessor(view_idx, TINYGLTF_COMPONENT_TYPE_FLOAT, geo.vertices.size(),
+                    TINYGLTF_TYPE_VEC3, min_v, max_v, model);
+  }
+
+  // Normal.
+  if (!geo.normals.empty()) {
+    int view_idx;
+    std::vector<float> buffer_data;
+    buffer_data.reserve(geo.normals.size() * 3);
+    for (const auto& n : geo.normals) {
+      buffer_data.push_back(n.x());
+      buffer_data.push_back(n.y());
+      buffer_data.push_back(n.z());
+    }
+    AddBufferView(buffer_data.data(), buffer_data.size() * sizeof(float), 12,
+                  TINYGLTF_TARGET_ARRAY_BUFFER, view_idx, model);
+    prim.attributes["NORMAL"] =
+        AddAccessor(view_idx, TINYGLTF_COMPONENT_TYPE_FLOAT, geo.normals.size(),
+                    TINYGLTF_TYPE_VEC3, {}, {}, model);
+  }
+
+  // Texcoord 0 (texture UVs).
+  if (!geo.texture_uvs.empty()) {
+    int view_idx;
+    std::vector<float> buffer_data;
+    buffer_data.reserve(geo.texture_uvs.size() * 2);
+    for (const auto& uv : geo.texture_uvs) {
+      buffer_data.push_back(uv.x());
+      buffer_data.push_back(uv.y());
+    }
+    AddBufferView(buffer_data.data(), buffer_data.size() * sizeof(float), 8,
+                  TINYGLTF_TARGET_ARRAY_BUFFER, view_idx, model);
+    prim.attributes["TEXCOORD_0"] = AddAccessor(
+        view_idx, TINYGLTF_COMPONENT_TYPE_FLOAT, geo.texture_uvs.size(),
+        TINYGLTF_TYPE_VEC2, {}, {}, model);
+  }
+
+  // Texcoord 1 (Q3 lightmap UVs) — never on an occluder shell.
+  if (!occluder_only && !geo.lightmap_uvs.empty()) {
+    int view_idx;
+    std::vector<float> buffer_data;
+    buffer_data.reserve(geo.lightmap_uvs.size() * 2);
+    for (const auto& uv : geo.lightmap_uvs) {
+      buffer_data.push_back(uv.x());
+      buffer_data.push_back(uv.y());
+    }
+    AddBufferView(buffer_data.data(), buffer_data.size() * sizeof(float), 8,
+                  TINYGLTF_TARGET_ARRAY_BUFFER, view_idx, model);
+    prim.attributes["TEXCOORD_1"] = AddAccessor(
+        view_idx, TINYGLTF_COMPONENT_TYPE_FLOAT, geo.lightmap_uvs.size(),
+        TINYGLTF_TYPE_VEC2, {}, {}, model);
+  }
+
+  // Indices.
+  {
+    int view_idx;
+    AddBufferView(geo.indices.data(), geo.indices.size() * sizeof(uint32_t), 0,
+                  TINYGLTF_TARGET_ELEMENT_ARRAY_BUFFER, view_idx, model);
+    prim.indices =
+        AddAccessor(view_idx, TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT,
+                    geo.indices.size(), TINYGLTF_TYPE_SCALAR, {}, {}, model);
+  }
+
+  if (occluder_only) {
+    tinygltf::Value::Object occ;
+    occ["occluderOnly"] = tinygltf::Value(true);
+    prim.extensions["SH_occluder"] = tinygltf::Value(occ);
+  }
+
+  mesh.primitives.push_back(prim);
+  model->meshes.push_back(mesh);
+
+  tinygltf::Node node;
+  node.mesh = static_cast<int>(model->meshes.size() - 1);
+  node.name = node_name;
+  Eigen::Matrix4f matrix = geo.transform.matrix();
+  std::vector<double> node_matrix;
+  for (int k = 0; k < 16; ++k) node_matrix.push_back(matrix(k));
+  node.matrix = node_matrix;
+  model->nodes.push_back(node);
+  model->nodes[world_node_idx].children.push_back(
+      static_cast<int>(model->nodes.size() - 1));
+}
+
 }  // namespace
 
 bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
@@ -475,127 +597,37 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
     });
     ++gltf_primitive_index;
 
-    // Create Mesh
-    tinygltf::Mesh mesh;
-    tinygltf::Primitive prim;
-    prim.mode = TINYGLTF_MODE_TRIANGLES;
-
-    // Find assigned material
+    int gltf_material = -1;
     auto mat_it = bsp_to_gltf_material.find(geo.material_id);
     if (mat_it != bsp_to_gltf_material.end()) {
-      prim.material = mat_it->second;
+      gltf_material = mat_it->second;
     }
 
-    // Position
-    {
-      int view_idx;
-      std::vector<float> buffer_data;
-      buffer_data.reserve(geo.vertices.size() * 3);
-      std::vector<double> min_v = {1e9, 1e9, 1e9};
-      std::vector<double> max_v = {-1e9, -1e9, -1e9};
+    EmitGeometryNode(geo, "Geometry_" + std::to_string(bsp_surf_idx),
+                     gltf_material, /*occluder_only=*/false, world_node_idx,
+                     &model);
+  }
 
-      for (const auto& v : geo.vertices) {
-        buffer_data.push_back(v.x());
-        buffer_data.push_back(v.y());
-        buffer_data.push_back(v.z());
-
-        if (v.x() < min_v[0]) min_v[0] = v.x();
-        if (v.y() < min_v[1]) min_v[1] = v.y();
-        if (v.z() < min_v[2]) min_v[2] = v.z();
-        if (v.x() > max_v[0]) max_v[0] = v.x();
-        if (v.y() > max_v[1]) max_v[1] = v.y();
-        if (v.z() > max_v[2]) max_v[2] = v.z();
-      }
-      if (buffer_data.empty()) {
-        min_v = {0, 0, 0};
-        max_v = {0, 0, 0};
-      }
-      AddBufferView(buffer_data.data(), buffer_data.size() * sizeof(float), 12,
-                    TINYGLTF_TARGET_ARRAY_BUFFER, view_idx, &model);
-      prim.attributes["POSITION"] = AddAccessor(
-          view_idx, TINYGLTF_COMPONENT_TYPE_FLOAT, geo.vertices.size(),
-          TINYGLTF_TYPE_VEC3, min_v, max_v, &model);
+  // 3b. Export occluder shells. These are synthetic (no BSP face), so they are
+  // emitted after every real surface — their glTF primitive indices fall past
+  // the last real one and are deliberately absent from manifest.json, keeping
+  // the real-face -> primitive mapping intact. Named after their source surface
+  // for debugging. Each carries SH_occluder and no lightmap UVs.
+  bool used_sh_occluder = false;
+  for (const Geometry& shell : scene.occluder_shells) {
+    int gltf_material = -1;
+    auto mat_it = bsp_to_gltf_material.find(shell.material_id);
+    if (mat_it != bsp_to_gltf_material.end()) {
+      gltf_material = mat_it->second;
     }
-
-    // Normal
-    if (!geo.normals.empty()) {
-      int view_idx;
-      std::vector<float> buffer_data;
-      buffer_data.reserve(geo.normals.size() * 3);
-      for (const auto& n : geo.normals) {
-        buffer_data.push_back(n.x());
-        buffer_data.push_back(n.y());
-        buffer_data.push_back(n.z());
-      }
-      AddBufferView(buffer_data.data(), buffer_data.size() * sizeof(float), 12,
-                    TINYGLTF_TARGET_ARRAY_BUFFER, view_idx, &model);
-      prim.attributes["NORMAL"] =
-          AddAccessor(view_idx, TINYGLTF_COMPONENT_TYPE_FLOAT,
-                      geo.normals.size(), TINYGLTF_TYPE_VEC3, {}, {}, &model);
-    }
-
-    // Texcoord 0 (Texture UVs)
-    if (!geo.texture_uvs.empty()) {
-      int view_idx;
-      std::vector<float> buffer_data;
-      buffer_data.reserve(geo.texture_uvs.size() * 2);
-      for (const auto& uv : geo.texture_uvs) {
-        buffer_data.push_back(uv.x());
-        buffer_data.push_back(uv.y());
-      }
-      AddBufferView(buffer_data.data(), buffer_data.size() * sizeof(float), 8,
-                    TINYGLTF_TARGET_ARRAY_BUFFER, view_idx, &model);
-      prim.attributes["TEXCOORD_0"] = AddAccessor(
-          view_idx, TINYGLTF_COMPONENT_TYPE_FLOAT, geo.texture_uvs.size(),
-          TINYGLTF_TYPE_VEC2, {}, {}, &model);
-    }
-
-    // Texcoord 1 (Lightmap UVs)
-    if (!geo.lightmap_uvs.empty()) {
-      int view_idx;
-      std::vector<float> buffer_data;
-      buffer_data.reserve(geo.lightmap_uvs.size() * 2);
-      for (const auto& uv : geo.lightmap_uvs) {
-        buffer_data.push_back(uv.x());
-        buffer_data.push_back(uv.y());
-      }
-      AddBufferView(buffer_data.data(), buffer_data.size() * sizeof(float), 8,
-                    TINYGLTF_TARGET_ARRAY_BUFFER, view_idx, &model);
-      prim.attributes["TEXCOORD_1"] = AddAccessor(
-          view_idx, TINYGLTF_COMPONENT_TYPE_FLOAT, geo.lightmap_uvs.size(),
-          TINYGLTF_TYPE_VEC2, {}, {}, &model);
-    }
-
-    // Indices
-    {
-      int view_idx;
-      AddBufferView(geo.indices.data(), geo.indices.size() * sizeof(uint32_t),
-                    0, TINYGLTF_TARGET_ELEMENT_ARRAY_BUFFER, view_idx, &model);
-      prim.indices =
-          AddAccessor(view_idx, TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT,
-                      geo.indices.size(), TINYGLTF_TYPE_SCALAR, {}, {}, &model);
-    }
-
-    mesh.primitives.push_back(prim);
-    model.meshes.push_back(mesh);
-
-    // Node for this mesh
-    tinygltf::Node node;
-    node.mesh = static_cast<int>(model.meshes.size() - 1);
-    node.name =
-        "Geometry_" + std::to_string(bsp_surf_idx);  // Optional: Name it
-
-    // Transform
-    Eigen::Matrix4f mat = geo.transform.matrix();
-    std::vector<double> matrix;
-    for (int k = 0; k < 16; ++k) matrix.push_back(mat(k));
-    node.matrix = matrix;
-
-    model.nodes.push_back(node);
-
-    // Add as child of Worldspawn
-    model.nodes[world_node_idx].children.push_back(
-        static_cast<int>(model.nodes.size() - 1));
+    std::string node_name =
+        "Geometry_" + std::to_string(shell.source_surface) + "_shell";
+    EmitGeometryNode(shell, node_name, gltf_material, /*occluder_only=*/true,
+                     world_node_idx, &model);
+    used_sh_occluder = true;
+  }
+  if (used_sh_occluder) {
+    model.extensionsUsed.push_back("SH_occluder");
   }
 
   // TODO: Export Environment (Skybox)

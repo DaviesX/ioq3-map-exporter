@@ -29,6 +29,15 @@ DEFINE_double(extrude_thickness, 0.2,
 DEFINE_double(extrude_inset, 0.02,
               "Back-rim inward inset toward the surface centroid, in meters "
               "(SI), to avoid coplanar side-wall z-fighting.");
+DEFINE_double(extrude_clearance_margin, 0.01,
+              "Safety gap in meters (SI) the occluder shell tries to leave "
+              "between its back cap and the nearest surface behind the wall. The "
+              "shell thickness is clamped toward this so it does not poke "
+              "through (spatially aware).");
+DEFINE_double(extrude_min_thickness, 0.02,
+              "Floor in meters (SI) on the shell thickness. Solidification never "
+              "emits a degenerate zero-thickness shell even where a wall has no "
+              "room behind it.");
 
 int main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -116,6 +125,10 @@ int main(int argc, char* argv[]) {
           {
               .thickness = static_cast<float>(FLAGS_extrude_thickness),
               .inset = static_cast<float>(FLAGS_extrude_inset),
+              .clearance_margin =
+                  static_cast<float>(FLAGS_extrude_clearance_margin),
+              .min_thickness =
+                  static_cast<float>(FLAGS_extrude_min_thickness),
           },
   };
   auto scene = ioq3_map::AssembleBSPObjects(
