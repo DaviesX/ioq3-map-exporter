@@ -3,18 +3,26 @@
 
 #include <Eigen/Dense>  // IWYU pragma: keep
 #include <functional>
+#include <limits>
 #include <optional>
 
 #include "scene.h"
 
 namespace ioq3_map {
 
-// A single nearest-hit ray cast: given a world-space ray origin and direction,
-// returns the distance to the nearest surface (or +infinity if none). Backed by
-// an Embree BVH (see bvh.h). Passed to BuildOccluderShell so the extrusion can
-// clamp itself to the free space actually available behind a wall.
-using ClearanceFn = std::function<float(const Eigen::Vector3f& origin,
-                                        const Eigen::Vector3f& dir)>;
+// A nearest-hit ray result: distance to the nearest surface (+infinity on a
+// miss) and that surface's geometric normal (unnormalized; undefined on a miss).
+// The normal lets the solidifier tell whether a ray enters a wall from outside.
+struct ClearanceHit {
+  float distance = std::numeric_limits<float>::infinity();
+  Eigen::Vector3f normal = Eigen::Vector3f::Zero();
+};
+
+// A single nearest-hit ray cast against the scene, given a world-space origin
+// and direction. Backed by an Embree BVH (see bvh.h). Passed to
+// BuildOccluderShell so the extrusion can measure the space around a wall.
+using ClearanceFn = std::function<ClearanceHit(const Eigen::Vector3f& origin,
+                                               const Eigen::Vector3f& dir)>;
 
 // Solidifies an infinitesimally thin BSP surface into a closed occluder shell
 // with real thickness, so downstream consumers (path-traced baker, shadow-mapped
@@ -29,15 +37,23 @@ using ClearanceFn = std::function<float(const Eigen::Vector3f& origin,
 // and carries NO lightmap UVs, so it never consumes lightmap atlas space and
 // never renders in the color pass. `front` is not modified.
 //
-// Spatial awareness: when `clearance` is supplied, the shell thickness is
-// clamped to `d - config.clearance_margin`, where `d` is the backward clearance
-// (nearest surface along a small cone about -normal), so it stops short of
-// whatever is behind the wall. Clearance is measured from face-INTERIOR sample
-// points, not the rim, so a wall's shared edges/corners (which lie on its
-// neighbouring faces) can never collapse the thickness to zero. The result is
-// floored at `config.min_thickness`, so a shell is always non-degenerate — a
-// wall with no room behind it still gets a real, if thin, shell. With
-// `clearance` null the full `config.thickness` is used.
+// Spatial awareness (when `clearance` is supplied) is two independent per-vertex
+// ray queries:
+//   1. Depth. A ray straight back (-normal) from each vertex measures how far
+//      the wall can extrude before hitting whatever is behind it; the vertex's
+//      thickness is clamped to `hit - config.clearance_margin`, floored at
+//      `config.min_thickness` so the shell is never degenerate. (A perpendicular
+//      neighbour sharing the vertex is coplanar with this ray and is missed, so
+//      shared edges do not collapse the depth.)
+//   2. Inward conform. From each extruded vertex, a ray toward the back-cap
+//      centroid detects an inward-leaning neighbour (e.g. a trapezoidal prism's
+//      slanted side): if the ray enters a wall from outside, the vertex has
+//      poked through it and is pulled back in onto that wall. Right prisms are
+//      untouched — their back vertices are inside, so the ray leaves the solid
+//      (the entering test fails) and nothing is pulled. This is why the extruded
+//      vertex, not the original one, seeds the ray: it has moved off the shared
+//      edge, so it hits the slanted neighbour at t > 0 instead of t = 0.
+// With `clearance` null the full `config.thickness` is used with no conforming.
 //
 // `config.inset` (meters, clamped to the local thickness) pushes each back-rim
 // vertex perpendicularly into the surface interior (per boundary edge, not

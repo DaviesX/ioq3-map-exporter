@@ -69,10 +69,11 @@ SceneBVH::~SceneBVH() {
   if (device_ != nullptr) rtcReleaseDevice(device_);
 }
 
-float SceneBVH::NearestHit(const Eigen::Vector3f& origin,
-                           const Eigen::Vector3f& dir, float tnear) const {
+RayHit SceneBVH::Cast(const Eigen::Vector3f& origin, const Eigen::Vector3f& dir,
+                      float tnear) const {
   constexpr float kInf = std::numeric_limits<float>::infinity();
-  if (scene_ == nullptr) return kInf;
+  const RayHit miss{kInf, Eigen::Vector3f::Zero()};
+  if (scene_ == nullptr) return miss;
 
   alignas(16) RTCRayHit rh{};
   rh.ray.org_x = origin.x();
@@ -94,10 +95,11 @@ float SceneBVH::NearestHit(const Eigen::Vector3f& origin,
   rtcInitIntersectArguments(&args);
   rtcIntersect1(scene_, &rh, &args);
 
-  if (rh.hit.geomID == RTC_INVALID_GEOMETRY_ID) return kInf;
+  if (rh.hit.geomID == RTC_INVALID_GEOMETRY_ID) return miss;
 
   // Embree's tfar is parametric in |dir|; convert to a world-space distance.
-  return rh.ray.tfar * dir.norm();
+  return {rh.ray.tfar * dir.norm(),
+          Eigen::Vector3f(rh.hit.Ng_x, rh.hit.Ng_y, rh.hit.Ng_z)};
 }
 
 }  // namespace ioq3_map

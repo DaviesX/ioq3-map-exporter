@@ -29,7 +29,7 @@ DEFINE_double(extrude_thickness, 0.2,
 DEFINE_double(extrude_inset, 0.02,
               "Back-rim inward inset toward the surface centroid, in meters "
               "(SI), to avoid coplanar side-wall z-fighting.");
-DEFINE_double(extrude_clearance_margin, 0.01,
+DEFINE_double(extrude_clearance_margin, 0.005,
               "Safety gap in meters (SI) the occluder shell tries to leave "
               "between its back cap and the nearest surface behind the wall. The "
               "shell thickness is clamped toward this so it does not poke "

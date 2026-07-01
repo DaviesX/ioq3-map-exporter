@@ -319,8 +319,9 @@ Scene AssembleBSPObjects(
     ClearanceFn clearance;
     if (bvh.valid()) {
       clearance = [&bvh](const Eigen::Vector3f& origin,
-                         const Eigen::Vector3f& dir) {
-        return bvh.NearestHit(origin, dir);
+                         const Eigen::Vector3f& dir) -> ClearanceHit {
+        RayHit hit = bvh.Cast(origin, dir);
+        return {hit.distance, hit.normal};
       };
     } else {
       LOG(WARNING) << "No clearance BVH available; solidifying with fixed "

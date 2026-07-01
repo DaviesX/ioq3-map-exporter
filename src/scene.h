@@ -60,7 +60,7 @@ struct ExtrusionConfig {
   // `backward_clearance - clearance_margin` so it stops this far short of
   // whatever is behind it (R2 in the design note). Only takes effect when
   // solidification is given a spatial-query callback.
-  float clearance_margin = 0.01f;
+  float clearance_margin = 0.005f;
   // Floor on the shell thickness (meters). Solidification never emits a
   // degenerate zero-thickness shell — a wall with no room behind it still gets a
   // shell at least this thick. This is safe: clearance only shrinks when
