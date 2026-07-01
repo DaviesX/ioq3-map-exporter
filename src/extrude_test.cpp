@@ -265,5 +265,94 @@ TEST(Extrude, TrapezoidalPrismConformsToSlant) {
   }
 }
 
+// A curved grid patch: a section of a cylinder of `radius` about the Z axis,
+// spanning [a0, a1] radians x [z0, z1], as a grid of n_a x n_z vertices,
+// grid-triangulated (the shape Triangulate(BSPPatch) produces). `concave` makes
+// the normals point toward the axis (the inside of a pipe); otherwise outward.
+Geometry MakeArcPatch(float radius, float a0, float a1, int n_a, float z0,
+                      float z1, int n_z, bool concave) {
+  Geometry g;
+  if (n_a < 2 || n_z < 2) {
+    return g;  // need at least a 2x2 grid; also avoids the /(n-1) below
+  }
+  g.vertices.reserve(n_a * n_z);
+  g.normals.reserve(n_a * n_z);
+  g.indices.reserve((n_a - 1) * (n_z - 1) * 6);
+  for (int iz = 0; iz < n_z; ++iz) {
+    for (int ia = 0; ia < n_a; ++ia) {
+      float a = a0 + (a1 - a0) * ia / (n_a - 1);
+      float z = z0 + (z1 - z0) * iz / (n_z - 1);
+      Eigen::Vector3f outward(std::cos(a), std::sin(a), 0.0f);
+      g.vertices.push_back({radius * outward.x(), radius * outward.y(), z});
+      g.normals.push_back(concave ? -outward : outward);
+    }
+  }
+  auto idx = [&](int ia, int iz) { return static_cast<uint32_t>(iz * n_a + ia); };
+  for (int iz = 0; iz < n_z - 1; ++iz) {
+    for (int ia = 0; ia < n_a - 1; ++ia) {
+      uint32_t v0 = idx(ia, iz), v1 = idx(ia + 1, iz);
+      uint32_t v2 = idx(ia + 1, iz + 1), v3 = idx(ia, iz + 1);
+      g.indices.insert(g.indices.end(), {v0, v2, v1, v0, v3, v2});
+    }
+  }
+  return g;
+}
+
+// Clearance that clamps the depth thin (so a non-tangent inward bias would push
+// a curved back vertex through the front) and never triggers the conform pass (a
+// zero normal makes the entering-test dot product zero, not negative).
+ClearanceHit ThinClamp(const Eigen::Vector3f&, const Eigen::Vector3f&) {
+  return {0.03f, Eigen::Vector3f::Zero()};
+}
+
+// Concave patch (inside of a pipe): normals point at the axis, so the shell
+// extrudes radially OUTWARD. The inward bias, if taken toward the 3D back-cap
+// centroid, would point radially inward — back toward the front — and with a
+// thin depth would invert the shell. Projected onto the tangent plane it must
+// not: every back vertex stays on the -normal side of its front vertex.
+TEST(Extrude, ConcavePatchDoesNotInvert) {
+  const float kPi = 3.14159265f;
+  Geometry patch =
+      MakeArcPatch(2.0f, 0.0f, kPi / 2, 6, 0.0f, 1.0f, 3, /*concave=*/true);
+  const size_t n = patch.vertices.size();
+  auto shell = BuildOccluderShell(
+      {.thickness = 0.1f, .clearance_margin = 0.01f}, patch, ThinClamp);
+  ASSERT_TRUE(shell.has_value());
+  ASSERT_EQ(shell->vertices.size(), 2 * n);
+
+  for (size_t i = 0; i < n; ++i) {
+    const Eigen::Vector3f& f = shell->vertices[i];
+    const Eigen::Vector3f& b = shell->vertices[i + n];
+    const Eigen::Vector3f& nrm = patch.normals[i];
+    EXPECT_LE((b - f).dot(nrm), 1e-4f) << "back vertex " << i << " inverted";
+    // Extruded radially outward: farther from the Z axis than the front.
+    EXPECT_GT(std::hypot(b.x(), b.y()), std::hypot(f.x(), f.y()) - 1e-4f);
+    EXPECT_GT((f - b).norm(), 1e-3f);  // non-degenerate
+  }
+}
+
+// Convex patch (outside of a pillar): normals point away from the axis, shell
+// extrudes radially inward; again no vertex may cross to the +normal side.
+TEST(Extrude, ConvexPatchDoesNotInvert) {
+  const float kPi = 3.14159265f;
+  Geometry patch =
+      MakeArcPatch(2.0f, 0.0f, kPi / 2, 6, 0.0f, 1.0f, 3, /*concave=*/false);
+  const size_t n = patch.vertices.size();
+  auto shell = BuildOccluderShell(
+      {.thickness = 0.1f, .clearance_margin = 0.01f}, patch, ThinClamp);
+  ASSERT_TRUE(shell.has_value());
+  ASSERT_EQ(shell->vertices.size(), 2 * n);
+
+  for (size_t i = 0; i < n; ++i) {
+    const Eigen::Vector3f& f = shell->vertices[i];
+    const Eigen::Vector3f& b = shell->vertices[i + n];
+    const Eigen::Vector3f& nrm = patch.normals[i];
+    EXPECT_LE((b - f).dot(nrm), 1e-4f) << "back vertex " << i << " inverted";
+    // Extruded radially inward: closer to the Z axis than the front.
+    EXPECT_LT(std::hypot(b.x(), b.y()), std::hypot(f.x(), f.y()) + 1e-4f);
+    EXPECT_GT((f - b).norm(), 1e-3f);  // non-degenerate
+  }
+}
+
 }  // namespace
 }  // namespace ioq3_map

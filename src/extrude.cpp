@@ -1,5 +1,7 @@
 #include "extrude.h"
 
+#include <glog/logging.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -159,9 +161,20 @@ void FitInwards(const ClearanceFn& clearance, const std::vector<float>& depth,
 // face is met at t=0 and missed, yet still z-fights. Biasing every vertex is
 // what actually separates the occluder from the faces it sits against — the
 // z-fighting artists see in Blender.
+//
+// The bias is projected onto each vertex's tangent plane. On a flat cap the
+// toward-centroid direction is already in-plane, so this is a no-op; but on a
+// curved cap (a Bezier patch) the raw direction has an out-of-surface component
+// that would dent the cap and, where the depth is clamped thin, push a back
+// vertex through the front and invert the shell. Staying in the tangent plane
+// keeps the bias a pure sideways shift.
 void ApplyInwardClearance(float clearance_margin,
+                          const std::vector<Eigen::Vector3f>& unit_normals,
                           std::vector<Eigen::Vector3f>* back) {
   const size_t n = back->size();
+  // `unit_normals` and `back` are filled in lockstep by FitThicknesses, so this
+  // must hold; assert it rather than guarding a case that cannot occur.
+  CHECK_EQ(unit_normals.size(), n);
   const float bias = kInsetMultiplier * clearance_margin;
 
   Eigen::Vector3f back_centroid = Eigen::Vector3f::Zero();
@@ -169,6 +182,8 @@ void ApplyInwardClearance(float clearance_margin,
   back_centroid /= static_cast<float>(n);
   for (size_t i = 0; i < n; ++i) {
     Eigen::Vector3f dir = back_centroid - (*back)[i];
+    const Eigen::Vector3f& nrm = unit_normals[i];
+    dir -= nrm * dir.dot(nrm);  // project onto the vertex's tangent plane
     float len = dir.norm();
     if (len > 1e-6f) {
       (*back)[i] += (dir / len) * std::min(bias, len);
@@ -209,7 +224,7 @@ std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
   // off the faces it sits against so it does not z-fight.
   if (clearance) {
     FitInwards(clearance, depth, &back);
-    ApplyInwardClearance(config.clearance_margin, &back);
+    ApplyInwardClearance(config.clearance_margin, unit_normals, &back);
   }
 
   Geometry shell;
