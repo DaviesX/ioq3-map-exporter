@@ -49,13 +49,16 @@ using ClearanceFn = std::function<ClearanceHit(const Eigen::Vector3f& origin,
 //   2. Inward conform. From each extruded vertex, a ray toward the back-cap
 //      centroid detects an inward-leaning neighbour (e.g. a trapezoidal prism's
 //      slanted side): if the ray enters a wall from outside, the vertex has
-//      poked through it and is pulled back to `config.clearance_margin` past
-//      that wall (deeper into the solid, so the cap is not coplanar with the
-//      face and does not z-fight). Right prisms are
+//      poked through it and is pulled back onto that wall. Right prisms are
 //      untouched — their back vertices are inside, so the ray leaves the solid
 //      (the entering test fails) and nothing is pulled. This is why the extruded
 //      vertex, not the original one, seeds the ray: it has moved off the shared
 //      edge, so it hits the slanted neighbour at t > 0 instead of t = 0.
+//   3. Uniform inward bias. Every back vertex is then nudged toward the back-cap
+//      centroid by `config.clearance_margin`, so the cap is never exactly
+//      coplanar with the front or a neighbour plane — even where a coplanar
+//      neighbour was met at t=0 and missed by the conform ray. This is what
+//      keeps the occluder off the faces it sits against and stops z-fighting.
 // With `clearance` null the full `config.thickness` is used with no conforming.
 //
 // Returns std::nullopt (solidify nothing) when `config.thickness <= 0`, the

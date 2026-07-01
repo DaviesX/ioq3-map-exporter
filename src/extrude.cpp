@@ -136,16 +136,11 @@ std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
   // vertex across the level.
   if (clearance) {
     constexpr float kMaxConformDepths = 4.0f;
-    // Land the vertex this far *past* the wall (deeper into the solid) so the
-    // back cap is not coplanar with the slanted face — coplanar occluders
-    // z-fight, which is hard for artists to inspect in Blender. This mirrors the
-    // depth pass, which stops the same gap *in front of* the wall behind, so
-    // clearance_margin is the single "stay this clear of a wall" distance.
     const float inward_margin = config.clearance_margin;
+
     Eigen::Vector3f back_centroid = Eigen::Vector3f::Zero();
     for (const auto& b : back) back_centroid += b;
     back_centroid /= static_cast<float>(n);
-
     for (size_t i = 0; i < n; ++i) {
       Eigen::Vector3f dir = back_centroid - back[i];
       float len = dir.norm();
@@ -154,9 +149,28 @@ std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
       ClearanceHit hit = clearance(back[i], dir);
       // hit.normal points out of the solid (front winding); a negative dot means
       // the ray is going into the wall's outside face, i.e. the vertex is out.
+      // Land it ON the wall; the uniform bias below then lifts it off.
       if (std::isfinite(hit.distance) && hit.normal.dot(dir) < 0.0f &&
           hit.distance <= kMaxConformDepths * depth[i]) {
-        back[i] += dir * std::min(hit.distance + inward_margin, len);
+        back[i] += dir * std::min(hit.distance, len);
+      }
+    }
+
+    // Pass 3: a uniform inward bias. Nudge EVERY back vertex toward the (updated)
+    // back-cap centroid by inward_margin, so the cap is never exactly coplanar
+    // with the front or a neighbour plane. The conform ray above only moves
+    // vertices whose poke-through it can see; a neighbour coplanar with the
+    // extruded face is met at t=0 and missed, yet still z-fights. Biasing every
+    // vertex is what actually separates the occluder from the faces it sits
+    // against — the z-fighting artists see in Blender.
+    back_centroid = Eigen::Vector3f::Zero();
+    for (const auto& b : back) back_centroid += b;
+    back_centroid /= static_cast<float>(n);
+    for (size_t i = 0; i < n; ++i) {
+      Eigen::Vector3f dir = back_centroid - back[i];
+      float len = dir.norm();
+      if (len > 1e-6f) {
+        back[i] += (dir / len) * std::min(inward_margin, len);
       }
     }
   }
