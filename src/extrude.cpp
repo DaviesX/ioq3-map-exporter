@@ -1,6 +1,7 @@
 #include "extrude.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -9,13 +10,16 @@ namespace ioq3_map {
 
 namespace {
 
+const float kInsetMultiplier = 10.0f;
+
 // A front-surface edge plus how many triangles use it. Boundary edges (count
-// == 1) get a side wall; the directed (p, q) orientation comes from the CCW
-// triangle that owns them, so the wall can be wound to face outward.
+// == 1) get a side wall; the directed (start_index, end_index) orientation comes
+// from the CCW triangle that owns them, so the wall can be wound to face
+// outward.
 struct EdgeInfo {
   int count = 0;
-  uint32_t p = 0;
-  uint32_t q = 0;
+  uint32_t start_index = 0;
+  uint32_t end_index = 0;
 };
 
 // Packs an undirected edge (the two endpoint indices, order-independent) into a
@@ -26,13 +30,14 @@ uint64_t EdgeKey(uint32_t a, uint32_t b) {
   return (static_cast<uint64_t>(lo) << 32) | static_cast<uint64_t>(hi);
 }
 
-// Records directed edge (p, q), keeping the first-seen orientation.
-void AddEdge(uint32_t p, uint32_t q,
+// Records directed edge (start_index, end_index), keeping the first-seen
+// orientation.
+void AddEdge(uint32_t start_index, uint32_t end_index,
              std::unordered_map<uint64_t, EdgeInfo>* edges) {
-  EdgeInfo& info = (*edges)[EdgeKey(p, q)];
+  EdgeInfo& info = (*edges)[EdgeKey(start_index, end_index)];
   if (info.count == 0) {
-    info.p = p;
-    info.q = q;
+    info.start_index = start_index;
+    info.end_index = end_index;
   }
   ++info.count;
 }
@@ -44,12 +49,12 @@ std::vector<EdgeInfo> FindBoundaryEdges(const Geometry& geo) {
   std::unordered_map<uint64_t, EdgeInfo> edges;
   edges.reserve(index_count);
   for (size_t t = 0; t + 2 < index_count; t += 3) {
-    uint32_t a = geo.indices[t];
-    uint32_t b = geo.indices[t + 1];
-    uint32_t c = geo.indices[t + 2];
-    AddEdge(a, b, &edges);
-    AddEdge(b, c, &edges);
-    AddEdge(c, a, &edges);
+    uint32_t v0 = geo.indices[t];
+    uint32_t v1 = geo.indices[t + 1];
+    uint32_t v2 = geo.indices[t + 2];
+    AddEdge(v0, v1, &edges);
+    AddEdge(v1, v2, &edges);
+    AddEdge(v2, v0, &edges);
   }
 
   std::vector<EdgeInfo> boundary;
@@ -61,149 +66,203 @@ std::vector<EdgeInfo> FindBoundaryEdges(const Geometry& geo) {
   return boundary;
 }
 
-// Per-boundary-vertex inward direction (unit, in the surface plane) used to inset
-// the back rim. For every boundary edge (p, q) — directed so the surface interior
-// lies to its left — the in-plane interior normal is faceNormal x edgeDir;
-// accumulating these over a vertex's incident boundary edges and renormalising
-// yields a direction that pushes each side wall perpendicularly off its own edge.
-// Interior vertices stay zero (their back copies are hidden, so no inset needed).
-std::vector<Eigen::Vector3f> ComputeBoundaryInward(
-    const std::vector<EdgeInfo>& boundary, const Geometry& geo) {
-  std::vector<Eigen::Vector3f> inward(geo.vertices.size(),
-                                      Eigen::Vector3f::Zero());
-  for (const auto& info : boundary) {
-    const Eigen::Vector3f& vp = geo.vertices[info.p];
-    const Eigen::Vector3f& vq = geo.vertices[info.q];
-    Eigen::Vector3f edge_dir = vq - vp;
-    // Average the endpoint normals for the local face normal of this edge.
-    Eigen::Vector3f face_n = geo.normals[info.p] + geo.normals[info.q];
-    Eigen::Vector3f interior = face_n.cross(edge_dir);  // left of (p -> q)
-    float len = interior.norm();
-    if (len > 1e-6f) {
-      interior /= len;
-      inward[info.p] += interior;
-      inward[info.q] += interior;
+// Pass 1: per-vertex extrusion depth -> provisional (straight-back) back cap. A
+// ray straight back (-normal) from each vertex says how far the wall may extrude
+// before something behind it; the depth is clamped to that (minus the margin).
+// Fills `unit_normals`, `back`, and `depth`. Returns false if any vertex has no
+// room to clear the margin: the surface is flush against geometry that already
+// occludes, so it is not shelled.
+bool FitThicknesses(const ExtrusionConfig& config, const Geometry& front,
+                    const ClearanceFn& clearance,
+                    std::vector<Eigen::Vector3f>* unit_normals,
+                    std::vector<Eigen::Vector3f>* back,
+                    std::vector<float>* depth) {
+  const size_t n = front.vertices.size();
+  const float target = config.thickness;
+  // Below this the shell would be a degenerate sliver; such a surface has no
+  // room to be shelled, so it is skipped entirely rather than floored to a
+  // fudge.
+  constexpr float kMinShellDepth = 1e-3f;
+
+  unit_normals->reserve(n);
+  back->reserve(n);
+  depth->reserve(n);
+  for (size_t i = 0; i < n; ++i) {
+    Eigen::Vector3f nrm = front.normals[i];
+    float nl = nrm.norm();
+    if (nl > 1e-8f) {
+      nrm /= nl;
+    } else {
+      nrm.setZero();
+    }
+
+    float t = target;
+    if (clearance && nl > 1e-8f) {
+      ClearanceHit hit = clearance(front.vertices[i], -nrm);
+      if (std::isfinite(hit.distance)) {
+        float room = hit.distance - config.clearance_margin;
+        if (room < kMinShellDepth) {
+          return false;  // no room here -> do not shell this surface
+        }
+        t = std::min(target, room);
+      }
+    }
+    unit_normals->push_back(nrm);
+    depth->push_back(t);
+    back->push_back(front.vertices[i] - nrm * t);
+  }
+  return true;
+}
+
+// Pass 2: conform the back cap to inward-leaning neighbours (e.g. a trapezoidal
+// prism's slanted sides). From each back vertex, cast toward the back-cap
+// centroid; if the ray enters a wall from outside, the vertex has poked through
+// that wall, so pull it in onto it. A right prism's back vertices are inside the
+// solid, so the ray leaves it (enters no wall from outside) and nothing moves.
+//
+// The correction is bounded to a multiple of the extrusion depth. A genuine
+// slant poke-through puts the entering wall only ~slope*depth away, so a far
+// "entering" hit is spurious — the single-ray inside/outside test is fooled in
+// concave regions of the non-convex BSP, where a back vertex sees a distant
+// wall's outside face. Capping keeps the shell local instead of yanking a vertex
+// across the level.
+void FitInwards(const ClearanceFn& clearance, const std::vector<float>& depth,
+                std::vector<Eigen::Vector3f>* back) {
+  constexpr float kMaxConformDepths = 4.0f;
+  const size_t n = back->size();
+
+  Eigen::Vector3f back_centroid = Eigen::Vector3f::Zero();
+  for (const auto& b : *back) back_centroid += b;
+  back_centroid /= static_cast<float>(n);
+  for (size_t i = 0; i < n; ++i) {
+    Eigen::Vector3f dir = back_centroid - (*back)[i];
+    float len = dir.norm();
+    if (len < 1e-6f) {
+      continue;
+    }
+    dir /= len;
+    ClearanceHit hit = clearance((*back)[i], dir);
+    // hit.normal points out of the solid (front winding); a negative dot means
+    // the ray is going into the wall's outside face, i.e. the vertex is out.
+    // Land it ON the wall; the uniform bias below then lifts it off.
+    if (std::isfinite(hit.distance) && hit.normal.dot(dir) < 0.0f &&
+        hit.distance <= kMaxConformDepths * depth[i]) {
+      (*back)[i] += dir * std::min(hit.distance, len);
     }
   }
-  for (auto& dir : inward) {
+}
+
+// Pass 3: a uniform inward bias. Nudge EVERY back vertex toward the back-cap
+// centroid by `kInsetMultiplier * clearance_margin`, so the cap is never exactly
+// coplanar with the front or a neighbour plane. The conform pass only moves
+// vertices whose poke-through it can see; a neighbour coplanar with the extruded
+// face is met at t=0 and missed, yet still z-fights. Biasing every vertex is
+// what actually separates the occluder from the faces it sits against — the
+// z-fighting artists see in Blender.
+void ApplyInwardClearance(float clearance_margin,
+                          std::vector<Eigen::Vector3f>* back) {
+  const size_t n = back->size();
+  const float bias = kInsetMultiplier * clearance_margin;
+
+  Eigen::Vector3f back_centroid = Eigen::Vector3f::Zero();
+  for (const auto& b : *back) back_centroid += b;
+  back_centroid /= static_cast<float>(n);
+  for (size_t i = 0; i < n; ++i) {
+    Eigen::Vector3f dir = back_centroid - (*back)[i];
     float len = dir.norm();
     if (len > 1e-6f) {
-      dir /= len;
+      (*back)[i] += (dir / len) * std::min(bias, len);
     }
-  }
-  return inward;
-}
-
-// Appends the back cap: every front vertex offset along -normal by `thickness`,
-// with each boundary vertex pulled perpendicularly into the surface interior by
-// up to `inset` (per-edge direction, see ComputeBoundaryInward) so the side walls
-// tilt off neighbouring faces' planes. The pull is clamped by the distance to the
-// centroid so tiny surfaces can't overshoot/invert. Back-cap triangles use
-// reversed winding so they face -normal. Callers must have reserved the final
-// capacity (front triangles are read in place while indices are appended).
-void AppendBackCap(float thickness, float inset,
-                   const std::vector<Eigen::Vector3f>& inward, bool has_tex_uv,
-                   bool has_light_uv, Geometry* geo) {
-  const size_t front_count = geo->vertices.size();
-  const size_t front_index_count = geo->indices.size();
-  const uint32_t back_base = static_cast<uint32_t>(front_count);
-
-  Eigen::Vector3f centroid = Eigen::Vector3f::Zero();
-  for (const auto& v : geo->vertices) {
-    centroid += v;
-  }
-  centroid /= static_cast<float>(front_count);
-
-  for (size_t i = 0; i < front_count; ++i) {
-    const Eigen::Vector3f& v = geo->vertices[i];
-    const Eigen::Vector3f& n = geo->normals[i];
-
-    float dist_to_centroid = (centroid - v).norm();
-    Eigen::Vector3f pull = inward[i] * std::min(inset, dist_to_centroid);
-    Eigen::Vector3f back = v + pull - n * thickness;
-
-    geo->vertices.push_back(back);
-    geo->normals.push_back(-n);
-    if (has_tex_uv) {
-      geo->texture_uvs.push_back(geo->texture_uvs[i]);
-    }
-    if (has_light_uv) {
-      geo->lightmap_uvs.push_back(geo->lightmap_uvs[i]);
-    }
-  }
-
-  for (size_t t = 0; t + 2 < front_index_count; t += 3) {
-    uint32_t a = geo->indices[t];
-    uint32_t b = geo->indices[t + 1];
-    uint32_t c = geo->indices[t + 2];
-    geo->indices.push_back(back_base + a);
-    geo->indices.push_back(back_base + c);
-    geo->indices.push_back(back_base + b);
-  }
-}
-
-// Appends two outward-facing triangles per boundary edge, joining the front rim
-// to the back rim (`back_base` is the index offset of the back cap).
-void AppendSideWalls(const std::vector<EdgeInfo>& boundary, uint32_t back_base,
-                     Geometry* geo) {
-  for (const auto& info : boundary) {
-    uint32_t p = info.p;
-    uint32_t q = info.q;
-    uint32_t bp = back_base + p;
-    uint32_t bq = back_base + q;
-    // Outward-facing winding (derived for a +normal front / -normal back cap).
-    geo->indices.push_back(p);
-    geo->indices.push_back(bp);
-    geo->indices.push_back(bq);
-
-    geo->indices.push_back(p);
-    geo->indices.push_back(bq);
-    geo->indices.push_back(q);
   }
 }
 
 }  // namespace
 
-void SolidifyGeometry(const ExtrusionConfig& config, Geometry* geo) {
-  if (geo == nullptr || config.thickness <= 0.0f) {
-    return;
+std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
+                                           const Geometry& front,
+                                           const ClearanceFn& clearance) {
+  if (config.thickness <= 0.0f) {
+    return std::nullopt;
   }
-  const size_t front_count = geo->vertices.size();
-  const size_t front_index_count = geo->indices.size();
-  if (front_count < 3 || front_index_count < 3) {
-    return;
+  const size_t n = front.vertices.size();
+  const size_t front_index_count = front.indices.size();
+  if (n < 3 || front_index_count < 3) {
+    return std::nullopt;
   }
   // Normals drive the extrusion direction, so they must be present and aligned
-  // with the vertices. UVs are copied only when they line up 1:1.
-  if (geo->normals.size() != front_count) {
-    return;
+  // with the vertices.
+  if (front.normals.size() != n) {
+    return std::nullopt;
   }
-  const bool has_tex_uv = geo->texture_uvs.size() == front_count;
-  const bool has_light_uv = geo->lightmap_uvs.size() == front_count;
 
-  // Find boundary edges first so we can reserve the exact final index capacity
-  // and read the original front triangles in place — no temporary copy, no
-  // reallocation invalidation.
-  std::vector<EdgeInfo> boundary = FindBoundaryEdges(*geo);
+  std::vector<EdgeInfo> boundary = FindBoundaryEdges(front);
 
-  // Reserve exact capacities: back cap doubles the vertices; indices gain the
-  // back cap (front_index_count) plus 2 triangles per boundary edge.
-  geo->vertices.reserve(front_count * 2);
-  geo->normals.reserve(front_count * 2);
-  if (has_tex_uv) {
-    geo->texture_uvs.reserve(front_count * 2);
+  // Straight-back extrusion depth per vertex; bail if any vertex has no room.
+  std::vector<Eigen::Vector3f> unit_normals;
+  std::vector<Eigen::Vector3f> back;
+  std::vector<float> depth;
+  if (!FitThicknesses(config, front, clearance, &unit_normals, &back, &depth)) {
+    return std::nullopt;
   }
-  if (has_light_uv) {
-    geo->lightmap_uvs.reserve(front_count * 2);
+
+  // Conform poked-through vertices onto slanted walls, then lift the whole cap
+  // off the faces it sits against so it does not z-fight.
+  if (clearance) {
+    FitInwards(clearance, depth, &back);
+    ApplyInwardClearance(config.clearance_margin, &back);
   }
-  geo->indices.reserve(front_index_count * 2 + boundary.size() * 6);
 
-  std::vector<Eigen::Vector3f> inward = ComputeBoundaryInward(boundary, *geo);
+  Geometry shell;
+  shell.occluder_only = true;
+  shell.material_id = front.material_id;
+  shell.transform = front.transform;
+  // No texture_uvs, no lightmap_uvs: the shell never receives a chart (R4).
 
-  const uint32_t back_base = static_cast<uint32_t>(front_count);
-  AppendBackCap(config.thickness, config.inset, inward, has_tex_uv, has_light_uv,
-                geo);
-  AppendSideWalls(boundary, back_base, geo);
+  // The shell owns a copy of the front rim (indices [0, n)) so its side walls
+  // have vertices to attach to; the conformed back cap follows in [n, 2n). The
+  // front's own triangles are NOT copied — they stay in the visible geometry,
+  // which both consumers include anyway.
+  shell.vertices.reserve(n * 2);
+  shell.vertices.insert(shell.vertices.end(), front.vertices.begin(),
+                        front.vertices.end());
+  shell.normals.reserve(n * 2);
+  shell.normals.insert(shell.normals.end(), front.normals.begin(),
+                       front.normals.end());
+  for (size_t i = 0; i < n; ++i) {
+    shell.vertices.push_back(back[i]);
+    shell.normals.push_back(-unit_normals[i]);
+  }
+
+  const uint32_t back_base = static_cast<uint32_t>(n);
+  shell.indices.reserve(front_index_count + boundary.size() * 6);
+
+  // Back cap: front triangles with reversed winding so they face -normal.
+  for (size_t t = 0; t + 2 < front_index_count; t += 3) {
+    uint32_t a = front.indices[t];
+    uint32_t b = front.indices[t + 1];
+    uint32_t c = front.indices[t + 2];
+    shell.indices.push_back(back_base + a);
+    shell.indices.push_back(back_base + c);
+    shell.indices.push_back(back_base + b);
+  }
+
+  // Side walls: two outward-facing triangles per boundary edge, joining the
+  // front rim to the back rim.
+  for (const auto& info : boundary) {
+    uint32_t p = info.start_index;
+    uint32_t q = info.end_index;
+    uint32_t bp = back_base + p;
+    uint32_t bq = back_base + q;
+    shell.indices.push_back(p);
+    shell.indices.push_back(bp);
+    shell.indices.push_back(bq);
+
+    shell.indices.push_back(p);
+    shell.indices.push_back(bq);
+    shell.indices.push_back(q);
+  }
+
+  return shell;
 }
 
 }  // namespace ioq3_map

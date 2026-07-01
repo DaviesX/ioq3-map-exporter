@@ -1,31 +1,77 @@
 #ifndef IOQ3_MAP_EXPORTER_EXTRUDE_H_
 #define IOQ3_MAP_EXPORTER_EXTRUDE_H_
 
+#include <Eigen/Dense>  // IWYU pragma: keep
+#include <functional>
+#include <limits>
+#include <optional>
+
 #include "scene.h"
 
 namespace ioq3_map {
 
-// Solidifies an infinitesimally thin BSP surface into a closed shell with real
-// thickness, so downstream consumers (path-traced baker, shadow-mapped renderer)
-// see physical geometry instead of a non-physical paper-thin sheet.
+// A nearest-hit ray result: distance to the nearest surface (+infinity on a
+// miss) and that surface's geometric normal (unnormalized; undefined on a
+// miss). The normal lets the solidifier tell whether a ray enters a wall from
+// outside.
+struct ClearanceHit {
+  float distance = std::numeric_limits<float>::infinity();
+  Eigen::Vector3f normal = Eigen::Vector3f::Zero();
+};
+
+// A single nearest-hit ray cast against the scene, given a world-space origin
+// and direction. Backed by an Embree BVH (see bvh.h). Passed to
+// BuildOccluderShell so the extrusion can measure the space around a wall.
+using ClearanceFn = std::function<ClearanceHit(const Eigen::Vector3f& origin,
+                                               const Eigen::Vector3f& dir)>;
+
+// Solidifies an infinitesimally thin BSP surface into a closed occluder shell
+// with real thickness, so downstream consumers (path-traced baker,
+// shadow-mapped renderer) see physical geometry instead of a non-physical
+// paper-thin sheet.
 //
-// The original (front) triangles are left untouched and visible. A back cap is
-// appended, offset by `thickness` (meters) along the per-vertex -normal, plus
-// side-wall quads along the surface's boundary edges, forming a watertight shell.
+// Unlike the visible `front` surface, the returned shell is an INDEPENDENT
+// Geometry: it holds a copy of the front rim plus a back cap offset along the
+// per-vertex -normal, stitched by side-wall quads along the boundary edges. The
+// front's own triangles stay in `front`; the shell (back cap + side walls) plus
+// the visible front together bound a watertight volume for both consumers,
+// which each include the front surface anyway. The shell is flagged
+// `occluder_only` and carries NO lightmap UVs, so it never consumes lightmap
+// atlas space and never renders in the color pass. `front` is not modified.
 //
-// `config.inset` (meters) pushes each back-rim vertex perpendicularly into the
-// surface interior (per boundary edge, not toward the global centroid) so every
-// side wall tilts off neighbouring faces' planes and never lands coplanar with a
-// neighbour's front cap (e.g. the parallel sides of a cube), which would z-fight.
-// The per-edge direction clears elongated/oblique edges that a centroid pull
-// leaves nearly coplanar; the pull is clamped by the centroid distance so small
-// surfaces can't overshoot.
+// Spatial awareness (when `clearance` is supplied) is two independent
+// per-vertex ray queries:
+//   1. Depth. A ray straight back (-normal) from each vertex measures how far
+//      the wall can extrude before hitting whatever is behind it; the vertex's
+//      thickness is clamped to `hit - config.clearance_margin`. If any vertex
+//      has no room to clear the margin, the surface is flush against geometry
+//      that already occludes, and nothing is emitted (see below). (A
+//      perpendicular neighbour sharing the vertex is coplanar with this ray and
+//      is missed, so shared edges do not collapse the depth.)
+//   2. Inward conform. From each extruded vertex, a ray toward the back-cap
+//      centroid detects an inward-leaning neighbour (e.g. a trapezoidal prism's
+//      slanted side): if the ray enters a wall from outside, the vertex has
+//      poked through it and is pulled back onto that wall. Right prisms are
+//      untouched — their back vertices are inside, so the ray leaves the solid
+//      (the entering test fails) and nothing is pulled. This is why the
+//      extruded vertex, not the original one, seeds the ray: it has moved off
+//      the shared edge, so it hits the slanted neighbour at t > 0 instead of t
+//      = 0.
+//   3. Uniform inward bias. Every back vertex is then nudged toward the
+//   back-cap
+//      centroid by `config.clearance_margin`, so the cap is never exactly
+//      coplanar with the front or a neighbour plane — even where a coplanar
+//      neighbour was met at t=0 and missed by the conform ray. This is what
+//      keeps the occluder off the faces it sits against and stops z-fighting.
+// With `clearance` null the full `config.thickness` is used with no conforming.
 //
-// All new geometry is appended into the same `geo`, preserving the one-Geometry
-// -> one-glTF-primitive mapping that the manifest relies on. No-op when
-// `config.thickness <= 0` or the surface has fewer than 3 vertices / one
-// triangle.
-void SolidifyGeometry(const ExtrusionConfig& config, Geometry* geo);
+// Returns std::nullopt (solidify nothing) when `config.thickness <= 0`, the
+// surface is degenerate (< 3 vertices / 1 triangle, or mismatched normals), or
+// the surface has no room to be shelled (some vertex is flush against geometry
+// behind it — which already occludes, so a shell is unnecessary).
+std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
+                                           const Geometry& front,
+                                           const ClearanceFn& clearance = {});
 
 }  // namespace ioq3_map
 

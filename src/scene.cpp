@@ -2,12 +2,14 @@
 
 #include <glog/logging.h>
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <variant>
 
 #include "bsp.h"
 #include "bsp_geometry.h"
+#include "bvh.h"
 #include "extrude.h"
 #include "shader_parser.h"
 #include "triangulation.h"
@@ -221,7 +223,10 @@ Scene AssembleBSPObjects(
     scene.materials.emplace(texture_index, std::move(mat));
   }
 
-  // 3. Process Geometries
+  // 3. Process Geometries (visible front surfaces). Surfaces eligible for
+  // solidification are collected here and turned into shells in step 3b, once
+  // every front surface exists and can be indexed by the clearance BVH.
+  std::vector<BSPSurfaceIndex> solidify_candidates;
   for (const auto& [surface_idx, geo] : bsp_geometries) {
     auto mat_it = scene.materials.find(geo.texture_index);
     if (mat_it == scene.materials.end()) {
@@ -251,15 +256,18 @@ Scene AssembleBSPObjects(
       continue;
     }
 
-    // Solidify thin opaque walls into closed shells so the path-tracer and
-    // shadow maps see physical geometry. Only planar polygons are solidified
-    // for now (triangle soups and curved patches are out of scope). Skip
-    // emissive surfaces (their back/sides would emit too) and two-sided
-    // surfaces (grates/fences/foliage, where a solid shell is nonsensical).
+    // Thin opaque walls are solidified into closed occluder shells so the
+    // path-tracer and shadow maps see physical geometry. That happens in a
+    // second pass (below) because it needs a BVH over every front surface to
+    // size each shell against the free space behind its wall. Only planar
+    // polygons are candidates for now (triangle soups and curved patches are
+    // out of scope). Skip emissive surfaces (their back/sides would emit too)
+    // and two-sided surfaces (grates/fences/foliage, where a solid shell is
+    // nonsensical).
     const bool is_polygon = std::holds_alternative<BSPPolygon>(geo.primitive);
     if (is_polygon && config.extrusion.thickness > 0.0f &&
         mat.emission_intensity <= 0.0f && mat.cull != Q3CullType::NONE) {
-      SolidifyGeometry(config.extrusion, &out_geo);
+      solidify_candidates.push_back(surface_idx);
     }
 
     scene.geometries.emplace(surface_idx, std::move(out_geo));
@@ -282,6 +290,61 @@ Scene AssembleBSPObjects(
       // texture.
       scene.lights.push_back(std::move(area_light));
     }
+  }
+
+  // 3b. Solidify eligible surfaces into independent occluder shells. A BVH over
+  // every front surface answers "how far is the nearest surface behind this
+  // wall?" so each shell is clamped to the free space actually available and
+  // never pokes through neighbouring geometry (spatially aware; see extrude.h).
+  if (!solidify_candidates.empty()) {
+    // Sort so shells are produced (and later emitted to glTF) in ascending
+    // surface-index order, keeping exports deterministic and diffable. Build
+    // the BVH's geometry list in the same order so its geometry IDs are stable
+    // too.
+    std::sort(solidify_candidates.begin(), solidify_candidates.end());
+
+    std::vector<BSPSurfaceIndex> sorted_indices;
+    sorted_indices.reserve(scene.geometries.size());
+    for (const auto& [idx, g] : scene.geometries) {
+      sorted_indices.push_back(idx);
+    }
+    std::sort(sorted_indices.begin(), sorted_indices.end());
+
+    std::vector<const Geometry*> occluders;
+    occluders.reserve(sorted_indices.size());
+    for (BSPSurfaceIndex idx : sorted_indices) {
+      occluders.push_back(&scene.geometries.at(idx));
+    }
+    SceneBVH bvh(occluders);
+
+    ClearanceFn clearance;
+    if (bvh.valid()) {
+      clearance = [&bvh](const Eigen::Vector3f& origin,
+                         const Eigen::Vector3f& dir) -> ClearanceHit {
+        RayHit hit = bvh.Cast(origin, dir);
+        return {hit.distance, hit.normal};
+      };
+    } else {
+      LOG(WARNING) << "No clearance BVH available; solidifying with fixed "
+                      "thickness (not spatially aware).";
+    }
+
+    for (BSPSurfaceIndex idx : solidify_candidates) {
+      const Geometry& front = scene.geometries.at(idx);
+      std::optional<Geometry> shell =
+          BuildOccluderShell(config.extrusion, front, clearance);
+      if (!shell) {
+        LOG(WARNING) << "Surface " << idx
+                     << " too tight to solidify into an occluder shell; "
+                        "skipping.";
+        continue;
+      }
+      shell->source_surface = idx;
+      scene.occluder_shells.push_back(std::move(*shell));
+    }
+    LOG(INFO) << "Solidified " << scene.occluder_shells.size() << " of "
+              << solidify_candidates.size()
+              << " candidate surfaces into occluder shells.";
   }
 
   return scene;
