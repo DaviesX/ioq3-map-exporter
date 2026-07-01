@@ -17,6 +17,11 @@ SceneBVH::SceneBVH(const std::vector<const Geometry*>& geometries) {
   }
 
   scene_ = rtcNewScene(device_);
+  if (scene_ == nullptr) {
+    LOG(ERROR) << "Failed to create Embree scene; solidification will fall "
+                  "back to fixed thickness.";
+    return;
+  }
   rtcSetSceneBuildQuality(scene_, RTC_BUILD_QUALITY_HIGH);
 
   for (const Geometry* g : geometries) {
@@ -25,6 +30,10 @@ SceneBVH::SceneBVH(const std::vector<const Geometry*>& geometries) {
     }
 
     RTCGeometry rtc_geo = rtcNewGeometry(device_, RTC_GEOMETRY_TYPE_TRIANGLE);
+    if (rtc_geo == nullptr) {
+      LOG(ERROR) << "Failed to create Embree geometry; skipping a surface.";
+      continue;
+    }
 
     // Vertices, baked to world space. Embree owns the buffer, so no lifetime
     // dependency on the source Geometry.
@@ -65,7 +74,7 @@ float SceneBVH::NearestHit(const Eigen::Vector3f& origin,
   constexpr float kInf = std::numeric_limits<float>::infinity();
   if (scene_ == nullptr) return kInf;
 
-  alignas(16) RTCRayHit rh;
+  alignas(16) RTCRayHit rh{};
   rh.ray.org_x = origin.x();
   rh.ray.org_y = origin.y();
   rh.ray.org_z = origin.z();

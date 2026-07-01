@@ -149,6 +149,13 @@ int GetOrAddTexture(tinygltf::Model* model,
 void EmitGeometryNode(const Geometry& geo, const std::string& node_name,
                       int gltf_material, bool occluder_only, int world_node_idx,
                       tinygltf::Model* model) {
+  // Optional attributes are emitted only when they line up 1:1 with the
+  // vertices, so a mismatched attribute is dropped rather than producing an
+  // invalid primitive with unequal accessor counts. (We do NOT early-return on a
+  // mismatch: the caller has already recorded this primitive's index in the
+  // manifest, so skipping emission here would desync that mapping.)
+  const size_t vertex_count = geo.vertices.size();
+
   tinygltf::Mesh mesh;
   tinygltf::Primitive prim;
   prim.mode = TINYGLTF_MODE_TRIANGLES;
@@ -184,7 +191,7 @@ void EmitGeometryNode(const Geometry& geo, const std::string& node_name,
   }
 
   // Normal.
-  if (!geo.normals.empty()) {
+  if (!geo.normals.empty() && geo.normals.size() == vertex_count) {
     int view_idx;
     std::vector<float> buffer_data;
     buffer_data.reserve(geo.normals.size() * 3);
@@ -201,7 +208,7 @@ void EmitGeometryNode(const Geometry& geo, const std::string& node_name,
   }
 
   // Texcoord 0 (texture UVs).
-  if (!geo.texture_uvs.empty()) {
+  if (!geo.texture_uvs.empty() && geo.texture_uvs.size() == vertex_count) {
     int view_idx;
     std::vector<float> buffer_data;
     buffer_data.reserve(geo.texture_uvs.size() * 2);
@@ -217,7 +224,8 @@ void EmitGeometryNode(const Geometry& geo, const std::string& node_name,
   }
 
   // Texcoord 1 (Q3 lightmap UVs) — never on an occluder shell.
-  if (!occluder_only && !geo.lightmap_uvs.empty()) {
+  if (!occluder_only && !geo.lightmap_uvs.empty() &&
+      geo.lightmap_uvs.size() == vertex_count) {
     int view_idx;
     std::vector<float> buffer_data;
     buffer_data.reserve(geo.lightmap_uvs.size() * 2);

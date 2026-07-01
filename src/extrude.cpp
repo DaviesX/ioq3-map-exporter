@@ -205,10 +205,12 @@ std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
   // side walls have vertices to attach to; the back cap follows in
   // [front_count, 2*front_count). The front's own triangles are NOT copied —
   // they stay in the visible geometry, which both consumers include anyway.
-  shell.vertices = front.vertices;
-  shell.normals = front.normals;
   shell.vertices.reserve(front_count * 2);
+  shell.vertices.insert(shell.vertices.end(), front.vertices.begin(),
+                        front.vertices.end());
   shell.normals.reserve(front_count * 2);
+  shell.normals.insert(shell.normals.end(), front.normals.begin(),
+                       front.normals.end());
 
   Eigen::Vector3f centroid = Eigen::Vector3f::Zero();
   for (const auto& v : front.vertices) centroid += v;

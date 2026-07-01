@@ -2,6 +2,7 @@
 
 #include <glog/logging.h>
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <variant>
@@ -296,10 +297,22 @@ Scene AssembleBSPObjects(
   // wall?" so each shell is clamped to the free space actually available and
   // never pokes through neighbouring geometry (spatially aware; see extrude.h).
   if (!solidify_candidates.empty()) {
-    std::vector<const Geometry*> occluders;
-    occluders.reserve(scene.geometries.size());
+    // Sort so shells are produced (and later emitted to glTF) in ascending
+    // surface-index order, keeping exports deterministic and diffable. Build the
+    // BVH's geometry list in the same order so its geometry IDs are stable too.
+    std::sort(solidify_candidates.begin(), solidify_candidates.end());
+
+    std::vector<BSPSurfaceIndex> sorted_indices;
+    sorted_indices.reserve(scene.geometries.size());
     for (const auto& [idx, g] : scene.geometries) {
-      occluders.push_back(&g);
+      sorted_indices.push_back(idx);
+    }
+    std::sort(sorted_indices.begin(), sorted_indices.end());
+
+    std::vector<const Geometry*> occluders;
+    occluders.reserve(sorted_indices.size());
+    for (BSPSurfaceIndex idx : sorted_indices) {
+      occluders.push_back(&scene.geometries.at(idx));
     }
     SceneBVH bvh(occluders);
 
