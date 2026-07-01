@@ -138,8 +138,10 @@ std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
     constexpr float kMaxConformDepths = 4.0f;
     // Land the vertex this far *past* the wall (deeper into the solid) so the
     // back cap is not coplanar with the slanted face — coplanar occluders
-    // z-fight, which is hard for artists to inspect in Blender.
-    constexpr float kInwardMargin = 1e-3f;
+    // z-fight, which is hard for artists to inspect in Blender. This mirrors the
+    // depth pass, which stops the same gap *in front of* the wall behind, so
+    // clearance_margin is the single "stay this clear of a wall" distance.
+    const float inward_margin = config.clearance_margin;
     Eigen::Vector3f back_centroid = Eigen::Vector3f::Zero();
     for (const auto& b : back) back_centroid += b;
     back_centroid /= static_cast<float>(n);
@@ -154,7 +156,7 @@ std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
       // the ray is going into the wall's outside face, i.e. the vertex is out.
       if (std::isfinite(hit.distance) && hit.normal.dot(dir) < 0.0f &&
           hit.distance <= kMaxConformDepths * depth[i]) {
-        back[i] += dir * std::min(hit.distance + kInwardMargin, len);
+        back[i] += dir * std::min(hit.distance + inward_margin, len);
       }
     }
   }

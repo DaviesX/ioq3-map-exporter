@@ -49,7 +49,9 @@ using ClearanceFn = std::function<ClearanceHit(const Eigen::Vector3f& origin,
 //   2. Inward conform. From each extruded vertex, a ray toward the back-cap
 //      centroid detects an inward-leaning neighbour (e.g. a trapezoidal prism's
 //      slanted side): if the ray enters a wall from outside, the vertex has
-//      poked through it and is pulled back in onto that wall. Right prisms are
+//      poked through it and is pulled back to `config.clearance_margin` past
+//      that wall (deeper into the solid, so the cap is not coplanar with the
+//      face and does not z-fight). Right prisms are
 //      untouched — their back vertices are inside, so the ray leaves the solid
 //      (the entering test fails) and nothing is pulled. This is why the extruded
 //      vertex, not the original one, seeds the ray: it has moved off the shared
