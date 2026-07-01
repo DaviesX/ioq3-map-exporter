@@ -272,6 +272,12 @@ TEST(Extrude, TrapezoidalPrismConformsToSlant) {
 Geometry MakeArcPatch(float radius, float a0, float a1, int n_a, float z0,
                       float z1, int n_z, bool concave) {
   Geometry g;
+  if (n_a < 2 || n_z < 2) {
+    return g;  // need at least a 2x2 grid; also avoids the /(n-1) below
+  }
+  g.vertices.reserve(n_a * n_z);
+  g.normals.reserve(n_a * n_z);
+  g.indices.reserve((n_a - 1) * (n_z - 1) * 6);
   for (int iz = 0; iz < n_z; ++iz) {
     for (int ia = 0; ia < n_a; ++ia) {
       float a = a0 + (a1 - a0) * ia / (n_a - 1);

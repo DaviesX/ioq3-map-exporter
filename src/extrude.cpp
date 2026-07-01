@@ -170,6 +170,12 @@ void ApplyInwardClearance(float clearance_margin,
                           const std::vector<Eigen::Vector3f>& unit_normals,
                           std::vector<Eigen::Vector3f>* back) {
   const size_t n = back->size();
+  // `unit_normals` and `back` are always the same length (both filled by
+  // FitThicknesses); guard defensively since the bias is a cosmetic no-op if we
+  // bail.
+  if (unit_normals.size() != n) {
+    return;
+  }
   const float bias = kInsetMultiplier * clearance_margin;
 
   Eigen::Vector3f back_centroid = Eigen::Vector3f::Zero();
