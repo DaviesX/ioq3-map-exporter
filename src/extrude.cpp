@@ -62,39 +62,6 @@ std::vector<EdgeInfo> FindBoundaryEdges(const Geometry& geo) {
   return boundary;
 }
 
-// Per-boundary-vertex inward direction (unit, in the surface plane) used to inset
-// the back rim. For every boundary edge (p, q) — directed so the surface interior
-// lies to its left — the in-plane interior normal is faceNormal x edgeDir;
-// accumulating these over a vertex's incident boundary edges and renormalising
-// yields a direction that pushes each side wall perpendicularly off its own edge.
-// Interior vertices stay zero (their back copies are hidden, so no inset needed).
-std::vector<Eigen::Vector3f> ComputeBoundaryInward(
-    const std::vector<EdgeInfo>& boundary, const Geometry& geo) {
-  std::vector<Eigen::Vector3f> inward(geo.vertices.size(),
-                                      Eigen::Vector3f::Zero());
-  for (const auto& info : boundary) {
-    const Eigen::Vector3f& vp = geo.vertices[info.p];
-    const Eigen::Vector3f& vq = geo.vertices[info.q];
-    Eigen::Vector3f edge_dir = vq - vp;
-    // Average the endpoint normals for the local face normal of this edge.
-    Eigen::Vector3f face_n = geo.normals[info.p] + geo.normals[info.q];
-    Eigen::Vector3f interior = face_n.cross(edge_dir);  // left of (p -> q)
-    float len = interior.norm();
-    if (len > 1e-6f) {
-      interior /= len;
-      inward[info.p] += interior;
-      inward[info.q] += interior;
-    }
-  }
-  for (auto& dir : inward) {
-    float len = dir.norm();
-    if (len > 1e-6f) {
-      dir /= len;
-    }
-  }
-  return inward;
-}
-
 }  // namespace
 
 std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
@@ -115,19 +82,17 @@ std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
   }
 
   std::vector<EdgeInfo> boundary = FindBoundaryEdges(front);
-  std::vector<Eigen::Vector3f> inward = ComputeBoundaryInward(boundary, front);
 
   const float target = config.thickness;
-  const float min_t = std::min(config.min_thickness, target);
+  // Below this the shell would be a degenerate sliver; such a surface has no room
+  // to be shelled, so it is skipped entirely rather than floored to a fudge.
+  constexpr float kMinShellDepth = 1e-3f;
 
-  Eigen::Vector3f front_centroid = Eigen::Vector3f::Zero();
-  for (const auto& v : front.vertices) front_centroid += v;
-  front_centroid /= static_cast<float>(n);
-
-  // Pass 1: per-vertex extrusion depth + in-plane inset -> provisional back cap.
-  // A ray straight back (-normal) from each vertex says how far the wall may
-  // extrude before something behind it; the depth is clamped to that (minus the
-  // margin) and floored so it is never degenerate.
+  // Pass 1: per-vertex extrusion depth -> provisional back cap. A ray straight
+  // back (-normal) from each vertex says how far the wall may extrude before
+  // something behind it; the depth is clamped to that (minus the margin). If any
+  // vertex has no room to clear the margin, the whole surface is flush against
+  // geometry (which already occludes) and is not shelled.
   std::vector<Eigen::Vector3f> unit_normals(n);
   std::vector<Eigen::Vector3f> back(n);
   std::vector<float> depth(n);
@@ -145,15 +110,15 @@ std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
     if (clearance && nl > 1e-8f) {
       ClearanceHit hit = clearance(front.vertices[i], -nrm);
       if (std::isfinite(hit.distance)) {
-        t = std::min(target,
-                     std::max(min_t, hit.distance - config.clearance_margin));
+        float room = hit.distance - config.clearance_margin;
+        if (room < kMinShellDepth) {
+          return std::nullopt;  // no room here -> do not shell this surface
+        }
+        t = std::min(target, room);
       }
     }
     depth[i] = t;
-
-    float dist_to_centroid = (front_centroid - front.vertices[i]).norm();
-    float inset = std::min(std::min(config.inset, t), dist_to_centroid);
-    back[i] = front.vertices[i] + inward[i] * inset - nrm * t;
+    back[i] = front.vertices[i] - nrm * t;
   }
 
   // Pass 2: conform the back cap to inward-leaning neighbours (e.g. a
@@ -171,6 +136,10 @@ std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
   // vertex across the level.
   if (clearance) {
     constexpr float kMaxConformDepths = 4.0f;
+    // Land the vertex this far *past* the wall (deeper into the solid) so the
+    // back cap is not coplanar with the slanted face — coplanar occluders
+    // z-fight, which is hard for artists to inspect in Blender.
+    constexpr float kInwardMargin = 1e-3f;
     Eigen::Vector3f back_centroid = Eigen::Vector3f::Zero();
     for (const auto& b : back) back_centroid += b;
     back_centroid /= static_cast<float>(n);
@@ -185,7 +154,7 @@ std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
       // the ray is going into the wall's outside face, i.e. the vertex is out.
       if (std::isfinite(hit.distance) && hit.normal.dot(dir) < 0.0f &&
           hit.distance <= kMaxConformDepths * depth[i]) {
-        back[i] += dir * std::min(hit.distance, len);
+        back[i] += dir * std::min(hit.distance + kInwardMargin, len);
       }
     }
   }

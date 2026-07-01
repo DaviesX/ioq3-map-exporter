@@ -91,14 +91,14 @@ std::map<std::pair<int, int>, int> EdgeUseCounts(const Geometry& g) {
 
 TEST(Extrude, DisabledReturnsNullopt) {
   Geometry g = MakeQuad();
-  auto shell = BuildOccluderShell({.thickness = 0.0f, .inset = 0.1f}, g);
+  auto shell = BuildOccluderShell({.thickness = 0.0f}, g);
   EXPECT_FALSE(shell.has_value());
 }
 
 TEST(Extrude, ShellIsIndependentOccluder) {
   Geometry g = MakeQuad();
   Geometry before = g;
-  auto shell = BuildOccluderShell({.thickness = 0.2f, .inset = 0.01f}, g);
+  auto shell = BuildOccluderShell({.thickness = 0.2f}, g);
   ASSERT_TRUE(shell.has_value());
 
   EXPECT_EQ(g.vertices.size(), before.vertices.size());
@@ -110,12 +110,11 @@ TEST(Extrude, ShellIsIndependentOccluder) {
   EXPECT_EQ(shell->vertices.size(), 8u);
 }
 
-TEST(Extrude, BackCapOffsetAndInset) {
+// No clearance -> full thickness, straight back along -normal (no inset).
+TEST(Extrude, BackCapOffset) {
   Geometry g = MakeQuad();
   const float thickness = 0.2f;
-  const float inset = 0.05f;
-  // No clearance -> full thickness everywhere, no conforming.
-  auto shell = BuildOccluderShell({.thickness = thickness, .inset = inset}, g);
+  auto shell = BuildOccluderShell({.thickness = thickness}, g);
   ASSERT_TRUE(shell.has_value());
   ASSERT_EQ(shell->vertices.size(), 8u);
 
@@ -124,16 +123,14 @@ TEST(Extrude, BackCapOffsetAndInset) {
     const Eigen::Vector3f& b = shell->vertices[i + 4];   // back cap
     EXPECT_NEAR(b.z(), -thickness, 1e-5f);
     EXPECT_EQ(shell->normals[i + 4], -shell->normals[i]);
-    float df = std::hypot(f.x() - 0.5f, f.y() - 0.5f);
-    float db = std::hypot(b.x() - 0.5f, b.y() - 0.5f);
-    EXPECT_LT(db, df);
-    EXPECT_NEAR(df - db, inset, 1e-5f);
+    EXPECT_NEAR(b.x(), f.x(), 1e-6f);  // straight extrusion: x/y unchanged
+    EXPECT_NEAR(b.y(), f.y(), 1e-6f);
   }
 }
 
 TEST(Extrude, ShellPlusFrontIsWatertight) {
   Geometry g = MakeQuad();
-  auto shell = BuildOccluderShell({.thickness = 0.2f, .inset = 0.01f}, g);
+  auto shell = BuildOccluderShell({.thickness = 0.2f}, g);
   ASSERT_TRUE(shell.has_value());
   for (const auto& [edge, count] : EdgeUseCounts(FrontPlusShell(g, *shell))) {
     EXPECT_EQ(count, 2) << "edge (" << edge.first << "," << edge.second << ")";
@@ -142,7 +139,7 @@ TEST(Extrude, ShellPlusFrontIsWatertight) {
 
 TEST(Extrude, BackCapWindingFacesAway) {
   Geometry g = MakeQuad();
-  auto shell = BuildOccluderShell({.thickness = 0.2f, .inset = 0.0f}, g);
+  auto shell = BuildOccluderShell({.thickness = 0.2f}, g);
   ASSERT_TRUE(shell.has_value());
   ASSERT_GE(shell->indices.size(), 6u);
   Eigen::Vector3f a = shell->vertices[shell->indices[0]];
@@ -152,31 +149,13 @@ TEST(Extrude, BackCapWindingFacesAway) {
   EXPECT_LT(n.z(), 0.0f);
 }
 
-TEST(Extrude, ElongatedStripClearsLongEdges) {
-  const float thickness = 0.2f;
-  const float inset = 0.05f;
-  Geometry g;
-  g.vertices = {{0, 0, 0}, {10, 0, 0}, {10, 0.1f, 0}, {0, 0.1f, 0}};
-  g.normals = {{0, 0, 1}, {0, 0, 1}, {0, 0, 1}, {0, 0, 1}};
-  g.indices = {0, 1, 2, 0, 2, 3};
-  auto shell = BuildOccluderShell({.thickness = thickness, .inset = inset}, g);
-  ASSERT_TRUE(shell.has_value());
-  ASSERT_EQ(shell->vertices.size(), 8u);
-  for (int i = 4; i < 8; ++i) {
-    const Eigen::Vector3f& b = shell->vertices[i];
-    EXPECT_GT(b.y(), 0.02f) << "back vertex " << i << " hugs the y=0 plane";
-    EXPECT_LT(b.y(), 0.08f) << "back vertex " << i << " hugs the y=0.1 plane";
-  }
-}
-
 // A wall 0.1 m behind clamps the depth to leave the clearance margin.
 TEST(Extrude, ClearanceMarginClampsThickness) {
   Geometry g = MakeQuad();  // z=0, normal +Z; backward is -Z.
   const float d_back = 0.1f;
   const float margin = 0.01f;
   auto shell = BuildOccluderShell(
-      {.thickness = 0.2f, .inset = 0.0f, .clearance_margin = margin}, g,
-      DepthWall(d_back));
+      {.thickness = 0.2f, .clearance_margin = margin}, g, DepthWall(d_back));
   ASSERT_TRUE(shell.has_value());
   ASSERT_EQ(shell->vertices.size(), 8u);
   for (int i = 4; i < 8; ++i) {
@@ -184,21 +163,13 @@ TEST(Extrude, ClearanceMarginClampsThickness) {
   }
 }
 
-// Essentially no room behind (clearance < margin) => floored at min_thickness,
-// never dropped to zero.
-TEST(Extrude, TightSpaceExtrudesMinThickness) {
+// No room behind (clearance < margin) => the surface is not shelled at all,
+// rather than floored to a degenerate sliver.
+TEST(Extrude, TooTightYieldsNoShell) {
   Geometry g = MakeQuad();
-  const float min_thickness = 0.02f;
-  auto shell = BuildOccluderShell({.thickness = 0.2f,
-                                   .inset = 0.0f,
-                                   .clearance_margin = 0.01f,
-                                   .min_thickness = min_thickness},
-                                  g, DepthWall(0.005f));
-  ASSERT_TRUE(shell.has_value());
-  ASSERT_EQ(shell->vertices.size(), 8u);
-  for (int i = 4; i < 8; ++i) {
-    EXPECT_NEAR(shell->vertices[i].z(), -min_thickness, 1e-4f);
-  }
+  auto shell = BuildOccluderShell(
+      {.thickness = 0.2f, .clearance_margin = 0.01f}, g, DepthWall(0.005f));
+  EXPECT_FALSE(shell.has_value());
 }
 
 // The six outward faces of the unit cube, each wound so its geometric normal
@@ -228,8 +199,8 @@ TEST(Extrude, RightPrismDoesNotCollapse) {
 
   const float thickness = 0.2f;
   const Geometry& plus_x = faces[0];  // +X face, extrudes toward -X.
-  auto shell = BuildOccluderShell(
-      {.thickness = thickness, .inset = 0.05f}, plus_x, WrapBVH(bvh));
+  auto shell =
+      BuildOccluderShell({.thickness = thickness}, plus_x, WrapBVH(bvh));
   ASSERT_TRUE(shell.has_value());
   ASSERT_EQ(shell->vertices.size(), 8u);
 
@@ -276,8 +247,7 @@ TEST(Extrude, TrapezoidalPrismConformsToSlant) {
 
   const float thickness = 0.5f;
   const Geometry& base = faces[0];  // normal -Z, extrudes +Z into the prism.
-  auto shell = BuildOccluderShell(
-      {.thickness = thickness, .inset = 0.02f}, base, WrapBVH(bvh));
+  auto shell = BuildOccluderShell({.thickness = thickness}, base, WrapBVH(bvh));
   ASSERT_TRUE(shell.has_value());
   ASSERT_EQ(shell->vertices.size(), 8u);
 
@@ -286,7 +256,7 @@ TEST(Extrude, TrapezoidalPrismConformsToSlant) {
   for (int i = 4; i < 8; ++i) {
     const Eigen::Vector3f& b = shell->vertices[i];
     EXPECT_NEAR(b.z(), thickness, 1e-3f);  // extruded the full depth (top is far)
-    // Conformed to (or inside) the slanted wall, not left poking out at ~1.98.
+    // Conformed to (or inside) the slanted wall, not left poking out at ~2.0.
     EXPECT_LT(std::abs(b.x()), wall_half_width + 5e-3f);
     EXPECT_LT(std::abs(b.y()), wall_half_width + 5e-3f);
     // ...and it really did extrude to a corner region, not collapse to centre.

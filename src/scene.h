@@ -50,23 +50,18 @@ struct Material {
 // Parameters controlling wall solidification (see extrude.h). Distances are in
 // meters (glTF space). A zero thickness disables solidification.
 struct ExtrusionConfig {
-  // Desired (maximum) shell thickness. The spatially-aware pass may shrink it
-  // where geometry is close behind the wall (see below), but never below
-  // `min_thickness`.
-  float thickness = 0.0f;
-  float inset = 0.0f;
+  // Desired (maximum) shell thickness, in meters. The depth pass tries to
+  // extrude every vertex this far and the spatially-aware clamp only shrinks it
+  // where geometry is close behind the wall (see below). A zero thickness
+  // disables solidification.
+  float thickness = 0.2f;
   // Safety gap (meters) the shell tries to leave between its back cap and the
   // nearest surface behind the wall. The shell thickness is clamped to
   // `backward_clearance - clearance_margin` so it stops this far short of
-  // whatever is behind it (R2 in the design note). Only takes effect when
-  // solidification is given a spatial-query callback.
-  float clearance_margin = 0.005f;
-  // Floor on the shell thickness (meters). Solidification never emits a
-  // degenerate zero-thickness shell — a wall with no room behind it still gets a
-  // shell at least this thick. This is safe: clearance only shrinks when
-  // something is close behind, i.e. space that is already occupied, so the small
-  // overshoot cannot leak into open space.
-  float min_thickness = 0.02f;
+  // whatever is behind it (R2 in the design note). A surface with no room to
+  // clear this gap is not shelled at all. Only takes effect when solidification
+  // is given a spatial-query callback.
+  float clearance_margin = 0.01f;
 };
 
 // Options for AssembleBSPObjects.

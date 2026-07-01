@@ -41,10 +41,11 @@ using ClearanceFn = std::function<ClearanceHit(const Eigen::Vector3f& origin,
 // ray queries:
 //   1. Depth. A ray straight back (-normal) from each vertex measures how far
 //      the wall can extrude before hitting whatever is behind it; the vertex's
-//      thickness is clamped to `hit - config.clearance_margin`, floored at
-//      `config.min_thickness` so the shell is never degenerate. (A perpendicular
-//      neighbour sharing the vertex is coplanar with this ray and is missed, so
-//      shared edges do not collapse the depth.)
+//      thickness is clamped to `hit - config.clearance_margin`. If any vertex
+//      has no room to clear the margin, the surface is flush against geometry
+//      that already occludes, and nothing is emitted (see below). (A
+//      perpendicular neighbour sharing the vertex is coplanar with this ray and
+//      is missed, so shared edges do not collapse the depth.)
 //   2. Inward conform. From each extruded vertex, a ray toward the back-cap
 //      centroid detects an inward-leaning neighbour (e.g. a trapezoidal prism's
 //      slanted side): if the ray enters a wall from outside, the vertex has
@@ -55,15 +56,10 @@ using ClearanceFn = std::function<ClearanceHit(const Eigen::Vector3f& origin,
 //      edge, so it hits the slanted neighbour at t > 0 instead of t = 0.
 // With `clearance` null the full `config.thickness` is used with no conforming.
 //
-// `config.inset` (meters, clamped to the local thickness) pushes each back-rim
-// vertex perpendicularly into the surface interior (per boundary edge, not
-// toward the global centroid) so side walls tilt off neighbouring faces' planes
-// and never land coplanar with a neighbour (e.g. the parallel sides of a cube),
-// which would z-fight.
-//
-// Returns std::nullopt (solidify nothing) only when `config.thickness <= 0` or
-// the surface is degenerate (< 3 vertices / 1 triangle, or mismatched normals).
-// A valid surface always yields a shell (thickness floored at min_thickness).
+// Returns std::nullopt (solidify nothing) when `config.thickness <= 0`, the
+// surface is degenerate (< 3 vertices / 1 triangle, or mismatched normals), or
+// the surface has no room to be shelled (some vertex is flush against geometry
+// behind it — which already occludes, so a shell is unnecessary).
 std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
                                            const Geometry& front,
                                            const ClearanceFn& clearance = {});
