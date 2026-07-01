@@ -1,5 +1,7 @@
 #include "extrude.h"
 
+#include <glog/logging.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -170,12 +172,9 @@ void ApplyInwardClearance(float clearance_margin,
                           const std::vector<Eigen::Vector3f>& unit_normals,
                           std::vector<Eigen::Vector3f>* back) {
   const size_t n = back->size();
-  // `unit_normals` and `back` are always the same length (both filled by
-  // FitThicknesses); guard defensively since the bias is a cosmetic no-op if we
-  // bail.
-  if (unit_normals.size() != n) {
-    return;
-  }
+  // `unit_normals` and `back` are filled in lockstep by FitThicknesses, so this
+  // must hold; assert it rather than guarding a case that cannot occur.
+  CHECK_EQ(unit_normals.size(), n);
   const float bias = kInsetMultiplier * clearance_margin;
 
   Eigen::Vector3f back_centroid = Eigen::Vector3f::Zero();
