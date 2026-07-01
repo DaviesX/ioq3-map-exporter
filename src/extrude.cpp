@@ -10,13 +10,16 @@ namespace ioq3_map {
 
 namespace {
 
+const float kInsetMultiplier = 10.0f;
+
 // A front-surface edge plus how many triangles use it. Boundary edges (count
-// == 1) get a side wall; the directed (p, q) orientation comes from the CCW
-// triangle that owns them, so the wall can be wound to face outward.
+// == 1) get a side wall; the directed (start_index, end_index) orientation comes
+// from the CCW triangle that owns them, so the wall can be wound to face
+// outward.
 struct EdgeInfo {
   int count = 0;
-  uint32_t p = 0;
-  uint32_t q = 0;
+  uint32_t start_index = 0;
+  uint32_t end_index = 0;
 };
 
 // Packs an undirected edge (the two endpoint indices, order-independent) into a
@@ -27,13 +30,14 @@ uint64_t EdgeKey(uint32_t a, uint32_t b) {
   return (static_cast<uint64_t>(lo) << 32) | static_cast<uint64_t>(hi);
 }
 
-// Records directed edge (p, q), keeping the first-seen orientation.
-void AddEdge(uint32_t p, uint32_t q,
+// Records directed edge (start_index, end_index), keeping the first-seen
+// orientation.
+void AddEdge(uint32_t start_index, uint32_t end_index,
              std::unordered_map<uint64_t, EdgeInfo>* edges) {
-  EdgeInfo& info = (*edges)[EdgeKey(p, q)];
+  EdgeInfo& info = (*edges)[EdgeKey(start_index, end_index)];
   if (info.count == 0) {
-    info.p = p;
-    info.q = q;
+    info.start_index = start_index;
+    info.end_index = end_index;
   }
   ++info.count;
 }
@@ -45,12 +49,12 @@ std::vector<EdgeInfo> FindBoundaryEdges(const Geometry& geo) {
   std::unordered_map<uint64_t, EdgeInfo> edges;
   edges.reserve(index_count);
   for (size_t t = 0; t + 2 < index_count; t += 3) {
-    uint32_t a = geo.indices[t];
-    uint32_t b = geo.indices[t + 1];
-    uint32_t c = geo.indices[t + 2];
-    AddEdge(a, b, &edges);
-    AddEdge(b, c, &edges);
-    AddEdge(c, a, &edges);
+    uint32_t v0 = geo.indices[t];
+    uint32_t v1 = geo.indices[t + 1];
+    uint32_t v2 = geo.indices[t + 2];
+    AddEdge(v0, v1, &edges);
+    AddEdge(v1, v2, &edges);
+    AddEdge(v2, v0, &edges);
   }
 
   std::vector<EdgeInfo> boundary;
@@ -60,6 +64,116 @@ std::vector<EdgeInfo> FindBoundaryEdges(const Geometry& geo) {
     }
   }
   return boundary;
+}
+
+// Pass 1: per-vertex extrusion depth -> provisional (straight-back) back cap. A
+// ray straight back (-normal) from each vertex says how far the wall may extrude
+// before something behind it; the depth is clamped to that (minus the margin).
+// Fills `unit_normals`, `back`, and `depth`. Returns false if any vertex has no
+// room to clear the margin: the surface is flush against geometry that already
+// occludes, so it is not shelled.
+bool FitThicknesses(const ExtrusionConfig& config, const Geometry& front,
+                    const ClearanceFn& clearance,
+                    std::vector<Eigen::Vector3f>* unit_normals,
+                    std::vector<Eigen::Vector3f>* back,
+                    std::vector<float>* depth) {
+  const size_t n = front.vertices.size();
+  const float target = config.thickness;
+  // Below this the shell would be a degenerate sliver; such a surface has no
+  // room to be shelled, so it is skipped entirely rather than floored to a
+  // fudge.
+  constexpr float kMinShellDepth = 1e-3f;
+
+  unit_normals->reserve(n);
+  back->reserve(n);
+  depth->reserve(n);
+  for (size_t i = 0; i < n; ++i) {
+    Eigen::Vector3f nrm = front.normals[i];
+    float nl = nrm.norm();
+    if (nl > 1e-8f) {
+      nrm /= nl;
+    } else {
+      nrm.setZero();
+    }
+
+    float t = target;
+    if (clearance && nl > 1e-8f) {
+      ClearanceHit hit = clearance(front.vertices[i], -nrm);
+      if (std::isfinite(hit.distance)) {
+        float room = hit.distance - config.clearance_margin;
+        if (room < kMinShellDepth) {
+          return false;  // no room here -> do not shell this surface
+        }
+        t = std::min(target, room);
+      }
+    }
+    unit_normals->push_back(nrm);
+    depth->push_back(t);
+    back->push_back(front.vertices[i] - nrm * t);
+  }
+  return true;
+}
+
+// Pass 2: conform the back cap to inward-leaning neighbours (e.g. a trapezoidal
+// prism's slanted sides). From each back vertex, cast toward the back-cap
+// centroid; if the ray enters a wall from outside, the vertex has poked through
+// that wall, so pull it in onto it. A right prism's back vertices are inside the
+// solid, so the ray leaves it (enters no wall from outside) and nothing moves.
+//
+// The correction is bounded to a multiple of the extrusion depth. A genuine
+// slant poke-through puts the entering wall only ~slope*depth away, so a far
+// "entering" hit is spurious — the single-ray inside/outside test is fooled in
+// concave regions of the non-convex BSP, where a back vertex sees a distant
+// wall's outside face. Capping keeps the shell local instead of yanking a vertex
+// across the level.
+void FitInwards(const ClearanceFn& clearance, const std::vector<float>& depth,
+                std::vector<Eigen::Vector3f>* back) {
+  constexpr float kMaxConformDepths = 4.0f;
+  const size_t n = back->size();
+
+  Eigen::Vector3f back_centroid = Eigen::Vector3f::Zero();
+  for (const auto& b : *back) back_centroid += b;
+  back_centroid /= static_cast<float>(n);
+  for (size_t i = 0; i < n; ++i) {
+    Eigen::Vector3f dir = back_centroid - (*back)[i];
+    float len = dir.norm();
+    if (len < 1e-6f) {
+      continue;
+    }
+    dir /= len;
+    ClearanceHit hit = clearance((*back)[i], dir);
+    // hit.normal points out of the solid (front winding); a negative dot means
+    // the ray is going into the wall's outside face, i.e. the vertex is out.
+    // Land it ON the wall; the uniform bias below then lifts it off.
+    if (std::isfinite(hit.distance) && hit.normal.dot(dir) < 0.0f &&
+        hit.distance <= kMaxConformDepths * depth[i]) {
+      (*back)[i] += dir * std::min(hit.distance, len);
+    }
+  }
+}
+
+// Pass 3: a uniform inward bias. Nudge EVERY back vertex toward the back-cap
+// centroid by `kInsetMultiplier * clearance_margin`, so the cap is never exactly
+// coplanar with the front or a neighbour plane. The conform pass only moves
+// vertices whose poke-through it can see; a neighbour coplanar with the extruded
+// face is met at t=0 and missed, yet still z-fights. Biasing every vertex is
+// what actually separates the occluder from the faces it sits against — the
+// z-fighting artists see in Blender.
+void ApplyInwardClearance(float clearance_margin,
+                          std::vector<Eigen::Vector3f>* back) {
+  const size_t n = back->size();
+  const float bias = kInsetMultiplier * clearance_margin;
+
+  Eigen::Vector3f back_centroid = Eigen::Vector3f::Zero();
+  for (const auto& b : *back) back_centroid += b;
+  back_centroid /= static_cast<float>(n);
+  for (size_t i = 0; i < n; ++i) {
+    Eigen::Vector3f dir = back_centroid - (*back)[i];
+    float len = dir.norm();
+    if (len > 1e-6f) {
+      (*back)[i] += (dir / len) * std::min(bias, len);
+    }
+  }
 }
 
 }  // namespace
@@ -83,96 +197,19 @@ std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
 
   std::vector<EdgeInfo> boundary = FindBoundaryEdges(front);
 
-  const float target = config.thickness;
-  // Below this the shell would be a degenerate sliver; such a surface has no room
-  // to be shelled, so it is skipped entirely rather than floored to a fudge.
-  constexpr float kMinShellDepth = 1e-3f;
-
-  // Pass 1: per-vertex extrusion depth -> provisional back cap. A ray straight
-  // back (-normal) from each vertex says how far the wall may extrude before
-  // something behind it; the depth is clamped to that (minus the margin). If any
-  // vertex has no room to clear the margin, the whole surface is flush against
-  // geometry (which already occludes) and is not shelled.
-  std::vector<Eigen::Vector3f> unit_normals(n);
-  std::vector<Eigen::Vector3f> back(n);
-  std::vector<float> depth(n);
-  for (size_t i = 0; i < n; ++i) {
-    Eigen::Vector3f nrm = front.normals[i];
-    float nl = nrm.norm();
-    if (nl > 1e-8f) {
-      nrm /= nl;
-    } else {
-      nrm.setZero();
-    }
-    unit_normals[i] = nrm;
-
-    float t = target;
-    if (clearance && nl > 1e-8f) {
-      ClearanceHit hit = clearance(front.vertices[i], -nrm);
-      if (std::isfinite(hit.distance)) {
-        float room = hit.distance - config.clearance_margin;
-        if (room < kMinShellDepth) {
-          return std::nullopt;  // no room here -> do not shell this surface
-        }
-        t = std::min(target, room);
-      }
-    }
-    depth[i] = t;
-    back[i] = front.vertices[i] - nrm * t;
+  // Straight-back extrusion depth per vertex; bail if any vertex has no room.
+  std::vector<Eigen::Vector3f> unit_normals;
+  std::vector<Eigen::Vector3f> back;
+  std::vector<float> depth;
+  if (!FitThicknesses(config, front, clearance, &unit_normals, &back, &depth)) {
+    return std::nullopt;
   }
 
-  // Pass 2: conform the back cap to inward-leaning neighbours (e.g. a
-  // trapezoidal prism's slanted sides). From each back vertex, cast toward the
-  // back-cap centroid; if the ray enters a wall from outside, the vertex has
-  // poked through that wall, so pull it in onto it. A right prism's back
-  // vertices are inside the solid, so the ray leaves it (enters no wall from
-  // outside) and nothing moves.
-  //
-  // The correction is bounded to a multiple of the extrusion depth. A genuine
-  // slant poke-through puts the entering wall only ~slope*depth away, so a far
-  // "entering" hit is spurious — the single-ray inside/outside test is fooled in
-  // concave regions of the non-convex BSP, where a back vertex sees a distant
-  // wall's outside face. Capping keeps the shell local instead of yanking a
-  // vertex across the level.
+  // Conform poked-through vertices onto slanted walls, then lift the whole cap
+  // off the faces it sits against so it does not z-fight.
   if (clearance) {
-    constexpr float kMaxConformDepths = 4.0f;
-    const float inward_margin = config.clearance_margin;
-
-    Eigen::Vector3f back_centroid = Eigen::Vector3f::Zero();
-    for (const auto& b : back) back_centroid += b;
-    back_centroid /= static_cast<float>(n);
-    for (size_t i = 0; i < n; ++i) {
-      Eigen::Vector3f dir = back_centroid - back[i];
-      float len = dir.norm();
-      if (len < 1e-6f) continue;
-      dir /= len;
-      ClearanceHit hit = clearance(back[i], dir);
-      // hit.normal points out of the solid (front winding); a negative dot means
-      // the ray is going into the wall's outside face, i.e. the vertex is out.
-      // Land it ON the wall; the uniform bias below then lifts it off.
-      if (std::isfinite(hit.distance) && hit.normal.dot(dir) < 0.0f &&
-          hit.distance <= kMaxConformDepths * depth[i]) {
-        back[i] += dir * std::min(hit.distance, len);
-      }
-    }
-
-    // Pass 3: a uniform inward bias. Nudge EVERY back vertex toward the (updated)
-    // back-cap centroid by inward_margin, so the cap is never exactly coplanar
-    // with the front or a neighbour plane. The conform ray above only moves
-    // vertices whose poke-through it can see; a neighbour coplanar with the
-    // extruded face is met at t=0 and missed, yet still z-fights. Biasing every
-    // vertex is what actually separates the occluder from the faces it sits
-    // against — the z-fighting artists see in Blender.
-    back_centroid = Eigen::Vector3f::Zero();
-    for (const auto& b : back) back_centroid += b;
-    back_centroid /= static_cast<float>(n);
-    for (size_t i = 0; i < n; ++i) {
-      Eigen::Vector3f dir = back_centroid - back[i];
-      float len = dir.norm();
-      if (len > 1e-6f) {
-        back[i] += (dir / len) * std::min(inward_margin, len);
-      }
-    }
+    FitInwards(clearance, depth, &back);
+    ApplyInwardClearance(config.clearance_margin, &back);
   }
 
   Geometry shell;
@@ -212,8 +249,8 @@ std::optional<Geometry> BuildOccluderShell(const ExtrusionConfig& config,
   // Side walls: two outward-facing triangles per boundary edge, joining the
   // front rim to the back rim.
   for (const auto& info : boundary) {
-    uint32_t p = info.p;
-    uint32_t q = info.q;
+    uint32_t p = info.start_index;
+    uint32_t q = info.end_index;
     uint32_t bp = back_base + p;
     uint32_t bq = back_base + q;
     shell.indices.push_back(p);
