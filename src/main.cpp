@@ -23,15 +23,16 @@ DEFINE_string(output, "", "Output directory");
 DEFINE_bool(collect_point_or_spot_lights, false,
             "Collect point and spot lights from entities");
 
-DEFINE_double(extrude_thickness, 0.2,
+DEFINE_double(extrude_thickness, 0.1,
               "Wall extrusion thickness in meters (SI) to solidify thin "
               "surfaces. 0 disables.");
-DEFINE_double(extrude_clearance_margin, 0.01,
-              "Safety gap in meters (SI) the occluder shell tries to leave "
-              "between its back cap and the nearest surface behind the wall. The "
-              "shell thickness is clamped toward this so it does not poke "
-              "through (spatially aware). A surface with no room to clear this "
-              "gap is not shelled.");
+DEFINE_double(
+    extrude_clearance_margin, 0.005,
+    "Safety gap in meters (SI) the occluder shell tries to leave "
+    "between its back cap and the nearest surface behind the wall. The "
+    "shell thickness is clamped toward this so it does not poke "
+    "through (spatially aware). A surface with no room to clear this "
+    "gap is not shelled.");
 
 int main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -122,8 +123,8 @@ int main(int argc, char* argv[]) {
                   static_cast<float>(FLAGS_extrude_clearance_margin),
           },
   };
-  auto scene = ioq3_map::AssembleBSPObjects(
-      *bsp, bsp_geometries, bsp_materials, bsp_entities, assembly_config);
+  auto scene = ioq3_map::AssembleBSPObjects(*bsp, bsp_geometries, bsp_materials,
+                                            bsp_entities, assembly_config);
   LOG(INFO) << "Scene Assembled. Total Geometries: " << scene.geometries.size();
   LOG(INFO) << "Total Materials: " << scene.materials.size();
   LOG(INFO) << "Total Lights: " << scene.lights.size();

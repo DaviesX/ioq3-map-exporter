@@ -260,9 +260,9 @@ Scene AssembleBSPObjects(
     // path-tracer and shadow maps see physical geometry. That happens in a
     // second pass (below) because it needs a BVH over every front surface to
     // size each shell against the free space behind its wall. Only planar
-    // polygons are candidates for now (triangle soups and curved patches are out
-    // of scope). Skip emissive surfaces (their back/sides would emit too) and
-    // two-sided surfaces (grates/fences/foliage, where a solid shell is
+    // polygons are candidates for now (triangle soups and curved patches are
+    // out of scope). Skip emissive surfaces (their back/sides would emit too)
+    // and two-sided surfaces (grates/fences/foliage, where a solid shell is
     // nonsensical).
     const bool is_polygon = std::holds_alternative<BSPPolygon>(geo.primitive);
     if (is_polygon && config.extrusion.thickness > 0.0f &&
@@ -298,8 +298,9 @@ Scene AssembleBSPObjects(
   // never pokes through neighbouring geometry (spatially aware; see extrude.h).
   if (!solidify_candidates.empty()) {
     // Sort so shells are produced (and later emitted to glTF) in ascending
-    // surface-index order, keeping exports deterministic and diffable. Build the
-    // BVH's geometry list in the same order so its geometry IDs are stable too.
+    // surface-index order, keeping exports deterministic and diffable. Build
+    // the BVH's geometry list in the same order so its geometry IDs are stable
+    // too.
     std::sort(solidify_candidates.begin(), solidify_candidates.end());
 
     std::vector<BSPSurfaceIndex> sorted_indices;
