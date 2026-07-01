@@ -259,13 +259,14 @@ Scene AssembleBSPObjects(
     // Thin opaque walls are solidified into closed occluder shells so the
     // path-tracer and shadow maps see physical geometry. That happens in a
     // second pass (below) because it needs a BVH over every front surface to
-    // size each shell against the free space behind its wall. Only planar
-    // polygons are candidates for now (triangle soups and curved patches are
-    // out of scope). Skip emissive surfaces (their back/sides would emit too)
-    // and two-sided surfaces (grates/fences/foliage, where a solid shell is
-    // nonsensical).
+    // size each shell against the free space behind its wall. Planar polygons
+    // and tessellated Bezier patches are candidates (both are clean connected
+    // grids with a well-defined boundary); triangle soups are out of scope. Skip
+    // emissive surfaces (their back/sides would emit too) and two-sided surfaces
+    // (grates/fences/foliage, where a solid shell is nonsensical).
     const bool is_polygon = std::holds_alternative<BSPPolygon>(geo.primitive);
-    if (is_polygon && config.extrusion.thickness > 0.0f &&
+    const bool is_patch = std::holds_alternative<BSPPatch>(geo.primitive);
+    if ((is_polygon || is_patch) && config.extrusion.thickness > 0.0f &&
         mat.emission_intensity <= 0.0f && mat.cull != Q3CullType::NONE) {
       solidify_candidates.push_back(surface_idx);
     }
