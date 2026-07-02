@@ -225,9 +225,11 @@ void EmitGeometryNode(const Geometry& geo, const std::string& node_name,
         TINYGLTF_TYPE_VEC2, {}, {}, model);
   }
 
-  // Texcoord 1 (Q3 lightmap UVs). Occluder shells carry none, so this is
-  // naturally skipped for them.
-  if (!geo.lightmap_uvs.empty() && geo.lightmap_uvs.size() == vertex_count) {
+  // Texcoord 1 (Q3 lightmap UVs). A material-less primitive is a pure occluder
+  // by convention and never receives a lightmap chart, so gate on the material:
+  // this guarantees no shell carries TEXCOORD_1 even from malformed/copied input.
+  if (gltf_material >= 0 && !geo.lightmap_uvs.empty() &&
+      geo.lightmap_uvs.size() == vertex_count) {
     int view_idx;
     std::vector<float> buffer_data;
     buffer_data.reserve(geo.lightmap_uvs.size() * 2);

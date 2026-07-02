@@ -357,8 +357,7 @@ TEST(SaverTest, OccluderShellEmittedMaterialLess) {
   for (const auto& node : model.nodes) {
     if (node.mesh < 0) continue;
     const auto& prim = model.meshes[node.mesh].primitives[0];
-    const bool is_shell = node.name.size() >= 6 &&
-                          node.name.rfind("_shell") == node.name.size() - 6;
+    const bool is_shell = node.name.ends_with("_shell");
     if (is_shell) {
       ++shell_nodes;
       shell_material = prim.material;  // expect unset (-1)
