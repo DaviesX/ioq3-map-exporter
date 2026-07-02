@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 #include <tiny_gltf.h>
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -302,6 +303,73 @@ TEST(SaverTest, SaveAnimMapLayer) {
         tex_dir / ("anim@frame0_layer0_frame" + std::to_string(f) + ".png")))
         << "missing frame " << f;
   }
+
+  std::filesystem::remove_all(temp_dir);
+}
+
+// An occluder shell is emitted with NO material and no SH_occluder extension:
+// a material-less primitive is a pure occluder by pipeline convention. Real
+// surfaces are always emitted with a material, so the two are distinguishable.
+TEST(SaverTest, OccluderShellEmittedMaterialLess) {
+  Scene scene;
+  Material mat;
+  mat.name = "WallMat";
+  scene.materials[0] = mat;
+
+  // A visible surface (has a material).
+  Geometry front;
+  front.vertices = {Eigen::Vector3f(0, 0, 0), Eigen::Vector3f(1, 0, 0),
+                    Eigen::Vector3f(0, 1, 0)};
+  front.normals = {Eigen::Vector3f(0, 0, 1), Eigen::Vector3f(0, 0, 1),
+                   Eigen::Vector3f(0, 0, 1)};
+  front.indices = {0, 1, 2};
+  front.material_id = 0;
+  scene.geometries[0] = front;
+
+  // Its occluder shell: flagged occluder_only, kept in the separate list.
+  Geometry shell = front;
+  shell.occluder_only = true;
+  shell.source_surface = 0;
+  scene.occluder_shells.push_back(shell);
+
+  std::filesystem::path temp_dir =
+      std::filesystem::temp_directory_path() / "ioq3_exporter_occluder_test";
+  std::filesystem::create_directories(temp_dir);
+  std::filesystem::path output_gltf = temp_dir / "scene.gltf";
+  ASSERT_TRUE(SaveScene(scene, output_gltf));
+
+  tinygltf::Model model;
+  tinygltf::TinyGLTF loader;
+  std::string err, warn;
+  ASSERT_TRUE(loader.LoadASCIIFromFile(&model, &err, &warn,
+                                       output_gltf.string()))
+      << err;
+
+  // No SH_occluder extension is declared.
+  EXPECT_EQ(std::find(model.extensionsUsed.begin(), model.extensionsUsed.end(),
+                      "SH_occluder"),
+            model.extensionsUsed.end());
+
+  // Find the shell node by its `_shell` name suffix and the sole real node.
+  int shell_material = 0;
+  int front_material = -1;
+  int shell_nodes = 0;
+  for (const auto& node : model.nodes) {
+    if (node.mesh < 0) continue;
+    const auto& prim = model.meshes[node.mesh].primitives[0];
+    const bool is_shell = node.name.ends_with("_shell");
+    if (is_shell) {
+      ++shell_nodes;
+      shell_material = prim.material;  // expect unset (-1)
+      // A shell carries no lightmap UVs.
+      EXPECT_EQ(prim.attributes.count("TEXCOORD_1"), 0u);
+    } else {
+      front_material = prim.material;  // expect a real material
+    }
+  }
+  EXPECT_EQ(shell_nodes, 1);
+  EXPECT_LT(shell_material, 0) << "occluder shell must be material-less";
+  EXPECT_GE(front_material, 0) << "visible surface must keep its material";
 
   std::filesystem::remove_all(temp_dir);
 }
