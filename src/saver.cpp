@@ -142,12 +142,14 @@ int GetOrAddTexture(tinygltf::Model* model,
 }
 
 // Emits `geo` as a mesh + single primitive + node parented under
-// `world_node_idx`. `gltf_material` < 0 leaves the primitive's material unset.
-// When `occluder_only`, the primitive is tagged with the SH_occluder extension
-// and its lightmap UV set (TEXCOORD_1) is suppressed — an occluder shell never
-// receives a lightmap chart.
+// `world_node_idx`. `gltf_material` < 0 leaves the primitive's material unset —
+// which is exactly how an occluder shell is emitted: a material-less primitive
+// is, by pipeline convention, a pure occluder (it casts shadows / blocks light
+// transport but never receives a lightmap chart or renders in the color pass).
+// Real surfaces are always emitted with a material, so the two cases are
+// distinguished by the presence of the material alone.
 void EmitGeometryNode(const Geometry& geo, const std::string& node_name,
-                      int gltf_material, bool occluder_only, int world_node_idx,
+                      int gltf_material, int world_node_idx,
                       tinygltf::Model* model) {
   // Optional attributes are emitted only when they line up 1:1 with the
   // vertices, so a mismatched attribute is dropped rather than producing an
@@ -223,9 +225,9 @@ void EmitGeometryNode(const Geometry& geo, const std::string& node_name,
         TINYGLTF_TYPE_VEC2, {}, {}, model);
   }
 
-  // Texcoord 1 (Q3 lightmap UVs) — never on an occluder shell.
-  if (!occluder_only && !geo.lightmap_uvs.empty() &&
-      geo.lightmap_uvs.size() == vertex_count) {
+  // Texcoord 1 (Q3 lightmap UVs). Occluder shells carry none, so this is
+  // naturally skipped for them.
+  if (!geo.lightmap_uvs.empty() && geo.lightmap_uvs.size() == vertex_count) {
     int view_idx;
     std::vector<float> buffer_data;
     buffer_data.reserve(geo.lightmap_uvs.size() * 2);
@@ -250,11 +252,6 @@ void EmitGeometryNode(const Geometry& geo, const std::string& node_name,
                     geo.indices.size(), TINYGLTF_TYPE_SCALAR, {}, {}, model);
   }
 
-  if (occluder_only) {
-    tinygltf::Value::Object occ;
-    occ["occluderOnly"] = tinygltf::Value(true);
-    prim.extensions["SH_occluder"] = tinygltf::Value(occ);
-  }
 
   mesh.primitives.push_back(prim);
   model->meshes.push_back(mesh);
@@ -612,30 +609,21 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
     }
 
     EmitGeometryNode(geo, "Geometry_" + std::to_string(bsp_surf_idx),
-                     gltf_material, /*occluder_only=*/false, world_node_idx,
-                     &model);
+                     gltf_material, world_node_idx, &model);
   }
 
   // 3b. Export occluder shells. These are synthetic (no BSP face), so they are
   // emitted after every real surface — their glTF primitive indices fall past
   // the last real one and are deliberately absent from manifest.json, keeping
   // the real-face -> primitive mapping intact. Named after their source surface
-  // for debugging. Each carries SH_occluder and no lightmap UVs.
-  bool used_sh_occluder = false;
+  // for debugging. Each is emitted material-less and with no lightmap UVs: a
+  // primitive without a material is, by pipeline convention, a pure occluder,
+  // so no custom extension is needed to mark it.
   for (const Geometry& shell : scene.occluder_shells) {
-    int gltf_material = -1;
-    auto mat_it = bsp_to_gltf_material.find(shell.material_id);
-    if (mat_it != bsp_to_gltf_material.end()) {
-      gltf_material = mat_it->second;
-    }
     std::string node_name =
         "Geometry_" + std::to_string(shell.source_surface) + "_shell";
-    EmitGeometryNode(shell, node_name, gltf_material, /*occluder_only=*/true,
-                     world_node_idx, &model);
-    used_sh_occluder = true;
-  }
-  if (used_sh_occluder) {
-    model.extensionsUsed.push_back("SH_occluder");
+    EmitGeometryNode(shell, node_name, /*gltf_material=*/-1, world_node_idx,
+                     &model);
   }
 
   // TODO: Export Environment (Skybox)

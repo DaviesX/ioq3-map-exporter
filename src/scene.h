@@ -89,7 +89,9 @@ struct Geometry {
   // Occluder-only shells (produced by solidification, see extrude.h) block
   // light transport in the baker's BVH and the renderer's shadow pass, but
   // never receive a lightmap chart and never render in the color pass. Visible
-  // surfaces leave this false. Carried into glTF as the SH_occluder extension.
+  // surfaces leave this false. In glTF this is expressed by emitting the shell
+  // with NO material: a material-less primitive is a pure occluder by pipeline
+  // convention (real surfaces are always emitted with a material).
   bool occluder_only = false;
   // For occluder shells: the BSP surface index this shell was extruded from,
   // used only to name the glTF node (`Geometry_<source>_shell`) for debugging.
