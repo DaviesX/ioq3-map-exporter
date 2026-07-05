@@ -60,10 +60,14 @@ void ToGeometry(const BSPMesh& mesh, Geometry* out_geometry) {
   }
 }
 
-// Helper to determine if a layer uses additive blending (ONE, ONE),
-// which we interpret as "black as alpha" for the exporter.
-bool IsBlackAsAlpha(const Q3TextureLayer& layer) {
-  return layer.blend_src == BlendFunc::ONE && layer.blend_dst == BlendFunc::ONE;
+// A plain opaque base stage writes the framebuffer directly (GL_ONE, GL_ZERO):
+// a normal diffuse `map`. This is the stage we want to tag as the modern-albedo
+// base. Additive overlays (GL_ONE, GL_ONE -- flames, computer-screen glows) are
+// NOT base candidates; they are reconstructed at load time from
+// SH_material_layers rather than flattened (and made transparent) into the base.
+bool IsOpaqueBaseLayer(const Q3TextureLayer& layer) {
+  return layer.blend_src == BlendFunc::ONE &&
+         layer.blend_dst == BlendFunc::ZERO;
 }
 
 std::optional<Light> GetSunLight(const BSPMaterial& bsp_mat) {
@@ -188,26 +192,37 @@ Scene AssembleBSPObjects(
     mat.texture_layers = bsp_mat.texture_layers;
     mat.surface_flags = bsp_mat.surface_flags;
     mat.cull = bsp_mat.cull;
-    // Pick the albedo source: the last static (no-tcMod) layer, else layer 0.
-    // Record its index so SH_material_layers can tag the base layer.
+    // Pick the albedo (base) layer and record its index so SH_material_layers
+    // can tag `baseLayer`. Prefer the first *opaque* stage (GL_ONE, GL_ZERO) --
+    // the shader's diffuse base -- whether or not it scrolls (its tcMod rides
+    // along in SH_material_layers and is re-applied to the base at render time).
+    // Additive overlays (GL_ONE, GL_ONE -- flames, computer-screen glows) are
+    // deliberately never chosen as the base: flattening one into the albedo
+    // (and, previously, keying its black background to alpha) turned solid walls
+    // into cut-out holes and erased animated flames downstream.
+    mat.albedo_layer = -1;
     for (size_t i = 0; i < bsp_mat.texture_layers.size(); ++i) {
-      const auto& layer = bsp_mat.texture_layers[i];
-      if (std::holds_alternative<Q3TCModNoOp>(layer.tcmod)) {
-        mat.albedo.file_path = layer.path;
-        mat.albedo.black_as_alpha = IsBlackAsAlpha(layer);
+      if (IsOpaqueBaseLayer(bsp_mat.texture_layers[i])) {
         mat.albedo_layer = static_cast<int>(i);
-      } else {
-        // TODO: Implement tcmod. This links to the multi-texture support. We
-        // will skip this for now.
+        break;
       }
     }
-    if (mat.albedo.file_path.empty()) {
-      // Takes the first texture layer as albedo and ignore the TcMod.
-      const auto& layer = bsp_mat.texture_layers.front();
-      mat.albedo.file_path = layer.path;
-      mat.albedo.black_as_alpha = IsBlackAsAlpha(layer);
+    // Fallback 1: no opaque stage -- take the first non-additive layer (e.g. an
+    // alpha-blended base) so a wall never keys off an additive glow overlay.
+    if (mat.albedo_layer < 0) {
+      for (size_t i = 0; i < bsp_mat.texture_layers.size(); ++i) {
+        if (bsp_mat.texture_layers[i].blend_dst != BlendFunc::ONE) {
+          mat.albedo_layer = static_cast<int>(i);
+          break;
+        }
+      }
+    }
+    // Fallback 2: a fully additive stack (a flame/glow with no diffuse base).
+    // Tag layer 0; consumers treat the whole stack as additive.
+    if (mat.albedo_layer < 0) {
       mat.albedo_layer = 0;
     }
+    mat.albedo.file_path = bsp_mat.texture_layers[mat.albedo_layer].path;
 
     // Emission
     mat.emission_intensity = bsp_mat.q3map_surfacelight;

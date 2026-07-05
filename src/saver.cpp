@@ -98,21 +98,17 @@ void CreateSolidColorPNG(const std::filesystem::path& out_path, int r, int g,
   stbi_write_png(out_path.string().c_str(), 1, 1, 4, data, 4);
 }
 
+// Re-encode a source texture (TGA/JPG/PNG) as a 4-channel PNG. A genuine alpha
+// channel in the source (real alpha-tested cut-outs) is preserved as-is; opaque
+// sources become alpha=255. The exporter no longer synthesises coverage from
+// luminance ("black as alpha") -- additive/overlay stages are expressed through
+// SH_material_layers instead of being flattened into the base texture.
 void ConvertToPNG(const std::filesystem::path& src,
-                  const std::filesystem::path& dst, bool black_as_alpha) {
+                  const std::filesystem::path& dst) {
   if (std::filesystem::exists(dst)) return;
   int w, h, c;
   unsigned char* data = stbi_load(src.string().c_str(), &w, &h, &c, 4);
   if (data) {
-    if (black_as_alpha) {
-      for (int i = 0; i < w * h; ++i) {
-        unsigned char r = data[4 * i + 0];
-        unsigned char g = data[4 * i + 1];
-        unsigned char b = data[4 * i + 2];
-        unsigned char max_val = std::max({r, g, b});
-        data[4 * i + 3] = max_val;
-      }
-    }
     stbi_write_png(dst.string().c_str(), w, h, 4, data, w * 4);
     stbi_image_free(data);
   } else {
@@ -329,8 +325,7 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
       std::string orm_name = folder_name.string() + "_orm.png";
 
       // Convert Original
-      ConvertToPNG(mat.albedo.file_path, texture_dir / diff_name,
-                   mat.albedo.black_as_alpha);
+      ConvertToPNG(mat.albedo.file_path, texture_dir / diff_name);
 
       // Create Placeholders
       CreateSolidColorPNG(texture_dir / albedo_name, 255, 0, 255);
@@ -358,8 +353,7 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
       // 2. Use Emission Texture
       if (!mat.emission.file_path.empty()) {
         std::string emissive_name = folder_name.string() + "_emissive.png";
-        ConvertToPNG(mat.emission.file_path, texture_dir / emissive_name,
-                     mat.emission.black_as_alpha);
+        ConvertToPNG(mat.emission.file_path, texture_dir / emissive_name);
 
         std::string emissive_uri = (folder_name / emissive_name).string();
         gmat.emissiveTexture.index =
@@ -419,7 +413,7 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
         std::string tex_name = folder_name.string() + "_layer" + std::to_string(i) + ".png";
         std::string tex_uri = (folder_name / tex_name).string();
         
-        ConvertToPNG(layer.path, texture_dir / tex_name, false);
+        ConvertToPNG(layer.path, texture_dir / tex_name);
 
         tinygltf::Value::Object tex_obj;
         tex_obj["index"] = tinygltf::Value(GetOrAddTexture(&model, &texture_allocations, tex_uri));
@@ -443,8 +437,7 @@ bool SaveScene(const Scene& scene, const std::filesystem::path& path) {
                                        std::to_string(i) + "_frame" +
                                        std::to_string(f) + ".png";
               frame_uri = (folder_name / frame_name).string();
-              ConvertToPNG(layer.anim_frame_paths[f], texture_dir / frame_name,
-                           false);
+              ConvertToPNG(layer.anim_frame_paths[f], texture_dir / frame_name);
             }
             anim_frames.push_back(tinygltf::Value(
                 GetOrAddTexture(&model, &texture_allocations, frame_uri)));
