@@ -18,7 +18,6 @@ namespace ioq3_map {
 // --- Texture ---
 struct Texture {
   std::filesystem::path file_path;
-  bool black_as_alpha = false;
 };
 
 // --- Material ---

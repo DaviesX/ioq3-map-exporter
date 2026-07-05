@@ -181,46 +181,101 @@ TEST_F(SceneTest, AssembleBSPObjectsExtractsEntities) {
   EXPECT_TRUE(found_spot);
 }
 
-TEST_F(SceneTest, AssembleBSPObjectsTagsBaseLayer) {
-  // layer 0: scaled (non-NoOp); layer 1: static (NoOp); layer 2: scroll
-  // (non-NoOp). The albedo source is the last static layer -> index 1.
+TEST_F(SceneTest, AssembleBSPObjectsPrefersOpaqueBaseEvenWithTcMod) {
+  // A scrolling computer screen: layer 0 is the opaque diffuse base
+  // (GL_ONE, GL_ZERO) that happens to scroll; layer 1 is an additive glow
+  // overlay (GL_ONE, GL_ONE). The base albedo must be the opaque scrolling base
+  // (index 0) -- its tcMod rides along in SH_material_layers -- never the
+  // additive overlay.
   BSPMaterial mat;
-  mat.name = "textures/base/multi";
-  Q3TextureLayer l0;
-  l0.path = "textures/base/l0.tga";
-  l0.tcmod = Q3TCModScale{2.f, 2.f};
-  Q3TextureLayer l1;
-  l1.path = "textures/base/l1.tga";  // tcmod defaults to Q3TCModNoOp
-  Q3TextureLayer l2;
-  l2.path = "textures/base/l2.tga";
-  l2.tcmod = Q3TCModScroll{1.f, 0.f};
-  mat.texture_layers = {l0, l1, l2};
-  materials_[0] = mat;
-
-  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_, entities_);
-
-  ASSERT_EQ(scene.materials.count(0), 1u);
-  EXPECT_EQ(scene.materials.at(0).albedo_layer, 1);
-  EXPECT_EQ(scene.materials.at(0).albedo.file_path, "textures/base/l1.tga");
-}
-
-TEST_F(SceneTest, AssembleBSPObjectsBaseLayerFallsBackToZero) {
-  // No static layer -> fall back to layer 0.
-  BSPMaterial mat;
-  mat.name = "textures/base/allmod";
-  Q3TextureLayer l0;
-  l0.path = "textures/base/a.tga";
-  l0.tcmod = Q3TCModScale{2.f, 2.f};
-  Q3TextureLayer l1;
-  l1.path = "textures/base/b.tga";
-  l1.tcmod = Q3TCModScroll{1.f, 0.f};
-  mat.texture_layers = {l0, l1};
+  mat.name = "textures/sfx/screen";
+  Q3TextureLayer base;
+  base.path = "textures/sfx/screen_base.tga";  // GL_ONE/GL_ZERO opaque
+  base.tcmod = Q3TCModScroll{0.f, 1.f};
+  Q3TextureLayer glow;
+  glow.path = "textures/sfx/screen_glow.tga";
+  glow.blend_src = BlendFunc::ONE;
+  glow.blend_dst = BlendFunc::ONE;  // additive
+  mat.texture_layers = {base, glow};
   materials_[0] = mat;
 
   Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_, entities_);
 
   ASSERT_EQ(scene.materials.count(0), 1u);
   EXPECT_EQ(scene.materials.at(0).albedo_layer, 0);
+  EXPECT_EQ(scene.materials.at(0).albedo.file_path,
+            "textures/sfx/screen_base.tga");
+}
+
+TEST_F(SceneTest, AssembleBSPObjectsFullyAdditiveTagsLayerZero) {
+  // A flame: every stage is additive (GL_ONE, GL_ONE) with no opaque or
+  // alpha-blended base. There is no meaningful diffuse, so baseLayer falls back
+  // to 0 (the consumer treats the whole stack as additive).
+  BSPMaterial mat;
+  mat.name = "textures/sfx/flame";
+  auto additive = [](const char* p) {
+    Q3TextureLayer l;
+    l.path = p;
+    l.blend_src = BlendFunc::ONE;
+    l.blend_dst = BlendFunc::ONE;
+    return l;
+  };
+  mat.texture_layers = {additive("textures/sfx/flame1.tga"),
+                        additive("textures/sfx/flame2.tga"),
+                        additive("textures/sfx/flameball.tga")};
+  materials_[0] = mat;
+
+  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_, entities_);
+
+  ASSERT_EQ(scene.materials.count(0), 1u);
+  EXPECT_EQ(scene.materials.at(0).albedo_layer, 0);
+}
+
+TEST_F(SceneTest, AssembleBSPObjectsFallbackAvoidsAdditiveOverlay) {
+  // No opaque stage: layer 0 is an additive glow, layer 1 is an alpha-blended
+  // base. baseLayer must skip the additive overlay and pick the blended base
+  // (index 1), not layer 0.
+  BSPMaterial mat;
+  mat.name = "textures/sfx/glasspanel";
+  Q3TextureLayer glow;
+  glow.path = "textures/sfx/glow.tga";
+  glow.blend_src = BlendFunc::ONE;
+  glow.blend_dst = BlendFunc::ONE;  // additive overlay
+  Q3TextureLayer blended;
+  blended.path = "textures/sfx/glass.tga";
+  blended.blend_src = BlendFunc::SRC_ALPHA;
+  blended.blend_dst = BlendFunc::ONE_MINUS_SRC_ALPHA;  // translucent base
+  mat.texture_layers = {glow, blended};
+  materials_[0] = mat;
+
+  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_, entities_);
+
+  ASSERT_EQ(scene.materials.count(0), 1u);
+  EXPECT_EQ(scene.materials.at(0).albedo_layer, 1);
+}
+
+TEST_F(SceneTest, AssembleBSPObjectsPrefersOpaqueBaseOverAdditiveOverlay) {
+  // The compscreen case: an opaque diffuse panel (GL_ONE, GL_ZERO) at layer 0,
+  // then an additive letters overlay (GL_ONE, GL_ONE) at layer 1. The base
+  // albedo must be the opaque panel (index 0) -- picking the overlay (and
+  // keying its black background to alpha) used to turn the wall into a cut-out
+  // hole downstream.
+  BSPMaterial mat;
+  mat.name = "textures/sfx/compscreen";
+  Q3TextureLayer base;
+  base.path = "textures/sfx/panel.tga";  // GL_ONE/GL_ZERO opaque
+  Q3TextureLayer overlay;
+  overlay.path = "textures/sfx/letters.tga";
+  overlay.blend_src = BlendFunc::ONE;
+  overlay.blend_dst = BlendFunc::ONE;  // additive
+  mat.texture_layers = {base, overlay};
+  materials_[0] = mat;
+
+  Scene scene = AssembleBSPObjects(bsp_, geometries_, materials_, entities_);
+
+  ASSERT_EQ(scene.materials.count(0), 1u);
+  EXPECT_EQ(scene.materials.at(0).albedo_layer, 0);
+  EXPECT_EQ(scene.materials.at(0).albedo.file_path, "textures/sfx/panel.tga");
 }
 
 }  // namespace

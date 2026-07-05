@@ -545,7 +545,11 @@ TEST(SaverTest, SaveAreaLightWithEmissiveMaterial) {
   std::filesystem::remove_all(temp_dir);
 }
 
-TEST(SaverTest, SaveWithBlackAlpha) {
+TEST(SaverTest, SaveDiffuseIsFaithfulOpaqueCopy) {
+  // The exporter no longer synthesises "black as alpha" coverage. An opaque
+  // source (no real alpha channel) must be re-encoded as a fully opaque
+  // diffuse: every texel keeps alpha 255 regardless of luminance, and RGB is
+  // preserved.
   // Setup temp directory
   std::filesystem::path temp_dir =
       std::filesystem::temp_directory_path() / "black_alpha_test";
@@ -553,7 +557,7 @@ TEST(SaverTest, SaveWithBlackAlpha) {
 
   // 1. Create source texture (2x2)
   // Pixels: Black (0,0,0), Red (255,0,0), Green (0,255,0), White (255,255,255)
-  // Expected Alpha: 0, 255, 255, 255
+  // Expected Alpha (all opaque): 255, 255, 255, 255
   std::vector<unsigned char> pixels = {
       0,   0,   0,   // Black
       255, 0,   0,   // Red
@@ -571,7 +575,6 @@ TEST(SaverTest, SaveWithBlackAlpha) {
   Material mat;
   mat.name = "TransparencyMat";
   mat.albedo.file_path = source_tex;
-  mat.albedo.black_as_alpha = true;
   scene.materials[0] = mat;
 
   // Geometry
@@ -604,17 +607,17 @@ TEST(SaverTest, SaveWithBlackAlpha) {
   ASSERT_EQ(h, 2);
   ASSERT_EQ(c, 4);  // We requested 4 channels
 
-  // Pixel 0 (Black) -> Alpha should be 0
-  EXPECT_EQ(data[3], 0);
+  // Every pixel must be opaque now -- no luminance-keyed transparency.
+  EXPECT_EQ(data[3], 255);       // Black -> still opaque
+  EXPECT_EQ(data[4 + 3], 255);   // Red
+  EXPECT_EQ(data[8 + 3], 255);   // Green
+  EXPECT_EQ(data[12 + 3], 255);  // White
 
-  // Pixel 1 (Red) -> Alpha should be 255
-  EXPECT_EQ(data[4 + 3], 255);
-
-  // Pixel 2 (Green) -> Alpha 255
-  EXPECT_EQ(data[8 + 3], 255);
-
-  // Pixel 3 (White) -> Alpha 255
-  EXPECT_EQ(data[12 + 3], 255);
+  // RGB must be preserved faithfully (black stays black, red stays red).
+  EXPECT_EQ(data[0], 0);
+  EXPECT_EQ(data[1], 0);
+  EXPECT_EQ(data[2], 0);
+  EXPECT_EQ(data[4 + 0], 255);
 
   stbi_image_free(data);
   std::filesystem::remove_all(temp_dir);
