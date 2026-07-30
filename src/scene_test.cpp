@@ -57,29 +57,44 @@ TEST_F(SceneTest, AssembleBSPObjectsPlanarTransform) {
   ASSERT_EQ(scene.geometries.size(), 1);
   const auto& out_geo = scene.geometries.at(0);
 
-  // Verify transform: x'=x, y'=z, z'=-y
-  // v0': (0, 0, 0)
-  // v1': (100*scale, 0, 0) -> (2.54, 0, 0)
-  // v2': (0, 0, -100*scale) -> (0, 0, -2.54)
-  // normal': (0, 1, 0)
-
+  // Geometry is kept in the Quake 3 Z-up convention and scaled to meters, then
+  // re-centered to its own local origin (the AABB center, recorded on the node
+  // transform). The Z-up -> Y-up conversion lives on the root node.
   constexpr float kScale = 0.0254f;
-  EXPECT_NEAR(out_geo.vertices[0].x(), 0.0f, 1e-5f);
-  EXPECT_NEAR(out_geo.vertices[0].y(), 0.0f, 1e-5f);
-  EXPECT_NEAR(out_geo.vertices[0].z(), 0.0f, 1e-5f);
 
-  EXPECT_NEAR(out_geo.vertices[1].x(), 100 * kScale, 1e-5f);
-  EXPECT_NEAR(out_geo.vertices[1].y(), 0.0f, 1e-5f);
-  EXPECT_NEAR(out_geo.vertices[1].z(), 0.0f, 1e-5f);
+  // Scaled (absolute) Z-up positions are (0,0,0), (2.54,0,0), (0,2.54,0), so the
+  // AABB center / local origin is (1.27, 1.27, 0).
+  Eigen::Vector3f expected_origin(50 * kScale, 50 * kScale, 0.0f);
+  EXPECT_TRUE(out_geo.transform.translation().isApprox(expected_origin, 1e-4f))
+      << out_geo.transform.translation().transpose();
 
-  EXPECT_NEAR(out_geo.vertices[2].x(), 0.0f, 1e-5f);
-  EXPECT_NEAR(out_geo.vertices[2].y(), 0.0f, 1e-5f);
-  EXPECT_NEAR(out_geo.vertices[2].z(), -100 * kScale, 1e-5f);  // z' = -y
+  // node_transform * local_vertex recovers the absolute Z-up (meters) position.
+  Eigen::Vector3f w0 = out_geo.transform * out_geo.vertices[0];
+  Eigen::Vector3f w1 = out_geo.transform * out_geo.vertices[1];
+  Eigen::Vector3f w2 = out_geo.transform * out_geo.vertices[2];
+  EXPECT_NEAR(w0.x(), 0.0f, 1e-5f);
+  EXPECT_NEAR(w0.y(), 0.0f, 1e-5f);
+  EXPECT_NEAR(w1.x(), 100 * kScale, 1e-5f);
+  EXPECT_NEAR(w1.y(), 0.0f, 1e-5f);
+  EXPECT_NEAR(w2.x(), 0.0f, 1e-5f);
+  EXPECT_NEAR(w2.y(), 100 * kScale, 1e-5f);
 
-  // Normal (0,0,1) -> (0,1,0)
+  // Composing the root transform reproduces the legacy glTF Y-up world coords
+  // (x'=x, y'=z, z'=-y).
+  Eigen::Affine3f root = Q3ToGltfRootTransform();
+  Eigen::Vector3f g1 = root * w1;  // (2.54, 0, 0) -> (2.54, 0, 0)
+  EXPECT_NEAR(g1.x(), 100 * kScale, 1e-5f);
+  EXPECT_NEAR(g1.y(), 0.0f, 1e-5f);
+  EXPECT_NEAR(g1.z(), 0.0f, 1e-5f);
+  Eigen::Vector3f g2 = root * w2;  // (0, 2.54, 0) -> (0, 0, -2.54)
+  EXPECT_NEAR(g2.z(), -100 * kScale, 1e-5f);
+
+  // Normal stays Z-up (0,0,1); the root rotates it to Y-up (0,1,0).
   EXPECT_NEAR(out_geo.normals[0].x(), 0.0f, 1e-5f);
-  EXPECT_NEAR(out_geo.normals[0].y(), 1.0f, 1e-5f);
-  EXPECT_NEAR(out_geo.normals[0].z(), 0.0f, 1e-5f);
+  EXPECT_NEAR(out_geo.normals[0].y(), 0.0f, 1e-5f);
+  EXPECT_NEAR(out_geo.normals[0].z(), 1.0f, 1e-5f);
+  Eigen::Vector3f gn = root.rotation() * out_geo.normals[0];
+  EXPECT_NEAR(gn.y(), 1.0f, 1e-5f);
 
   // Material Check
   ASSERT_EQ(scene.materials.size(), 1);
@@ -115,14 +130,19 @@ TEST_F(SceneTest, AssembleBSPObjectsExtractsSun) {
       // y = 0.707 * sin(90) = 0.707
       // z = 0.707
       // Q3 Sun Pos: (0, 0.707, 0.707)
+      // Direction is now kept in Quake 3 Z-up (not pre-rotated):
       // Q3 Light Dir: (0, -0.707, -0.707)
-      // Transform (Rot -90 X):
-      // x'=x=0
-      // y'=z=-0.707
-      // z'=-y=0.707
       EXPECT_NEAR(l.direction.x(), 0.0f, 1e-3f);
       EXPECT_NEAR(l.direction.y(), -0.707f, 1e-3f);
-      EXPECT_NEAR(l.direction.z(), 0.707f, 1e-3f);
+      EXPECT_NEAR(l.direction.z(), -0.707f, 1e-3f);
+
+      // Composing the root rotation yields the legacy glTF Y-up direction
+      // (x'=x, y'=z, z'=-y) -> (0, -0.707, 0.707).
+      Eigen::Vector3f gltf_dir =
+          Q3ToGltfRootTransform().rotation() * l.direction;
+      EXPECT_NEAR(gltf_dir.x(), 0.0f, 1e-3f);
+      EXPECT_NEAR(gltf_dir.y(), -0.707f, 1e-3f);
+      EXPECT_NEAR(gltf_dir.z(), 0.707f, 1e-3f);
     }
   }
   EXPECT_TRUE(found_sun);
@@ -160,8 +180,16 @@ TEST_F(SceneTest, AssembleBSPObjectsExtractsEntities) {
   for (const auto& l : scene.lights) {
     if (l.type == Light::Type::Point && l.intensity == 500.0f) {
       found_point = true;
-      // 100 in -> 2.54 m
-      EXPECT_NEAR(l.position.x(), 2.54f, 1e-3f);
+      // Position is Quake 3 Z-up scaled to meters: (100,200,300) in -> meters.
+      EXPECT_NEAR(l.position.x(), 100.0f * 0.0254f, 1e-3f);
+      EXPECT_NEAR(l.position.y(), 200.0f * 0.0254f, 1e-3f);
+      EXPECT_NEAR(l.position.z(), 300.0f * 0.0254f, 1e-3f);
+      // Composing the root transform reproduces the legacy glTF Y-up position
+      // (x'=x, y'=z, z'=-y).
+      Eigen::Vector3f gltf_pos = Q3ToGltfRootTransform() * l.position;
+      EXPECT_NEAR(gltf_pos.x(), 100.0f * 0.0254f, 1e-3f);
+      EXPECT_NEAR(gltf_pos.y(), 300.0f * 0.0254f, 1e-3f);
+      EXPECT_NEAR(gltf_pos.z(), -200.0f * 0.0254f, 1e-3f);
     }
   }
   EXPECT_TRUE(found_point);

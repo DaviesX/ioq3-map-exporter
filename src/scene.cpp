@@ -18,27 +18,19 @@ namespace ioq3_map {
 
 namespace {
 
-// Q3 is Z-up. glTF is Y-up.
-// Standard conversion: Rotate -90 degrees around X axis.
-// x' = x
-// y' = z
-// z' = -y
-Eigen::Vector3f TransformPoint(const Eigen::Vector3f& p) {
-  // Scale (inches to meters). 1 inch = 0.0254 meters.
-  constexpr float kScale = 0.0254f;
-  return Eigen::Vector3f(p.x() * kScale, p.z() * kScale, -p.y() * kScale);
-}
+// Quake 3 world space is Z-up, X-forward; glTF world space is Y-up, Z-forward.
+// Both are measured in meters here. The artists' editor (Blender) is Z-up, so we
+// keep the geometry itself in the Quake 3 Z-up convention -- only scaling inches
+// to meters -- and emit the Z-up -> Y-up axis conversion once on the "Worldspawn"
+// root node (see Q3ToGltfRootTransform). Downstream loaders compose the node
+// hierarchy and reproduce the original Y-up world coordinates, while the mesh the
+// artist opens stays in the familiar Z-up convention with identity node
+// transforms.
+constexpr float kInchesToMeters = 0.0254f;
 
-Eigen::Vector3f TransformNormal(const Eigen::Vector3f& n) {
-  // Rotate -90 degrees around X axis.
-  return Eigen::Vector3f(n.x(), n.z(), -n.y());
-}
-
-Eigen::Vector2f TransformUV(const Eigen::Vector2f& uv) {
-  return Eigen::Vector2f(uv.x(), uv.y());
-}
-
-// Convert extracted BSPMesh to Scene Geometry (with coordinate transforms)
+// Convert extracted BSPMesh to Scene Geometry. Vertices are scaled to meters but
+// left in Quake 3 Z-up; normals and UVs pass through unchanged. The Z-up -> Y-up
+// conversion is applied by the root node (see Q3ToGltfRootTransform).
 void ToGeometry(const BSPMesh& mesh, Geometry* out_geometry) {
   out_geometry->vertices.reserve(mesh.vertices.size());
   out_geometry->normals.reserve(mesh.vertices.size());
@@ -46,10 +38,10 @@ void ToGeometry(const BSPMesh& mesh, Geometry* out_geometry) {
   out_geometry->lightmap_uvs.reserve(mesh.vertices.size());
 
   for (const auto& v : mesh.vertices) {
-    out_geometry->vertices.push_back(TransformPoint(v.xyz));
-    out_geometry->normals.push_back(TransformNormal(v.normal));
-    out_geometry->texture_uvs.push_back(TransformUV(v.st));
-    out_geometry->lightmap_uvs.push_back(TransformUV(v.lightmap));
+    out_geometry->vertices.push_back(v.xyz * kInchesToMeters);
+    out_geometry->normals.push_back(v.normal);
+    out_geometry->texture_uvs.push_back(v.st);
+    out_geometry->lightmap_uvs.push_back(v.lightmap);
   }
 
   // This is because Quake3 uses a clockwise winding order whereas OpenGL
@@ -58,6 +50,31 @@ void ToGeometry(const BSPMesh& mesh, Geometry* out_geometry) {
   for (int i = int(mesh.indices.size()) - 1; i >= 0; --i) {
     out_geometry->indices.push_back(static_cast<uint32_t>(mesh.indices[i]));
   }
+}
+
+// Re-centers a geometry's vertices around its own local origin (the axis-aligned
+// bounding-box center) and records that origin as the geometry's node transform
+// (a translation). Without this, every face's vertices are stored in absolute
+// world space with a node origin at (0,0,0), so a face's mesh floats tens to
+// hundreds of meters from its pivot -- artists can't isolate and edit an
+// individual surface. After re-centering, each surface is a compact mesh sitting
+// at its own origin, and composing the node translation reproduces the original
+// world position. No-op for empty geometry.
+void RecenterToLocalOrigin(Geometry* geo) {
+  if (geo->vertices.empty()) {
+    return;
+  }
+  Eigen::Vector3f min_v = geo->vertices.front();
+  Eigen::Vector3f max_v = geo->vertices.front();
+  for (const auto& v : geo->vertices) {
+    min_v = min_v.cwiseMin(v);
+    max_v = max_v.cwiseMax(v);
+  }
+  Eigen::Vector3f origin = 0.5f * (min_v + max_v);
+  for (auto& v : geo->vertices) {
+    v -= origin;
+  }
+  geo->transform = Eigen::Affine3f(Eigen::Translation3f(origin));
 }
 
 // Helper to determine if a layer uses additive blending (ONE, ONE),
@@ -100,18 +117,28 @@ std::optional<Light> GetSunLight(const BSPMaterial& bsp_mat) {
   float cy = r * std::sin(yaw_rad);
 
   Eigen::Vector3f q3_sun_pos(cx, cy, cz);
-  // Light direction is -q3_sun_pos
-  Eigen::Vector3f q3_light_dir = -q3_sun_pos;
-
-  // Transform to glTF space (Y-up) using TransformNormal
-  // Wait, TransformNormal rotates -90 X.
-  // x' = x, y' = z, z' = -y
-  result.direction = TransformNormal(q3_light_dir);
+  // Light direction is -q3_sun_pos, kept in Quake 3 Z-up; the root node rotates
+  // it into glTF Y-up.
+  result.direction = -q3_sun_pos;
 
   return result;
 }
 
 }  // namespace
+
+Eigen::Affine3f Q3ToGltfRootTransform() {
+  // Z-up -> Y-up: rotate -90 degrees about X (x'=x, y'=z, z'=-y). Geometry and
+  // lights are already scaled to meters and kept in Quake 3 Z-up, so the root
+  // node carries only this rotation. Applying it reproduces the legacy world
+  // coordinates exactly.
+  Eigen::Matrix3f rot;
+  rot << 1.0f, 0.0f, 0.0f,  //
+      0.0f, 0.0f, 1.0f,     //
+      0.0f, -1.0f, 0.0f;
+  Eigen::Affine3f transform = Eigen::Affine3f::Identity();
+  transform.linear() = rot;
+  return transform;
+}
 
 Scene AssembleBSPObjects(
     const BSP& bsp,
@@ -130,7 +157,8 @@ Scene AssembleBSPObjects(
         const auto& p = std::get<PointLightEntity>(entity.data);
         Light light;
         light.type = Light::Type::Point;
-        light.position = TransformPoint(p.origin);
+        // Quake 3 Z-up, scaled to meters; the root node rotates to glTF Y-up.
+        light.position = p.origin * kInchesToMeters;
         light.color = p.color;
         light.intensity = p.intensity;
         scene.lights.push_back(std::move(light));
@@ -138,8 +166,9 @@ Scene AssembleBSPObjects(
         const auto& s = std::get<SpotLightEntity>(entity.data);
         Light light;
         light.type = Light::Type::Spot;
-        light.position = TransformPoint(s.origin);
-        light.direction = TransformNormal(s.direction);
+        // Quake 3 Z-up, scaled to meters; the root node rotates to glTF Y-up.
+        light.position = s.origin * kInchesToMeters;
+        light.direction = s.direction;
         light.color = s.color;
         light.intensity = s.intensity;
 
@@ -270,6 +299,11 @@ Scene AssembleBSPObjects(
         mat.emission_intensity <= 0.0f && mat.cull != Q3CullType::NONE) {
       solidify_candidates.push_back(surface_idx);
     }
+
+    // Give the surface its own local origin so artists can isolate/edit it,
+    // instead of every mesh sharing the world origin. Done after solidify so the
+    // origin reflects the final shell.
+    RecenterToLocalOrigin(&out_geo);
 
     scene.geometries.emplace(surface_idx, std::move(out_geo));
 

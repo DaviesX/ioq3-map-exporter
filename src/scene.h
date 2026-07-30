@@ -136,6 +136,15 @@ struct Scene {
   std::optional<Sky> sky;
 };
 
+// The transform emitted once on the "Worldspawn" root node: the Z-up -> Y-up
+// axis conversion (a -90 degrees rotation about X). Geometry and lights are
+// exported in the Quake 3 Z-up convention (Blender-friendly) and scaled to
+// meters; this single root rotation completes the conversion to glTF Y-up, so
+// downstream loaders that compose the node hierarchy reproduce the original
+// world coordinates. Per-surface meshes additionally carry their own local
+// origin on the geometry node (see RecenterToLocalOrigin).
+Eigen::Affine3f Q3ToGltfRootTransform();
+
 // When `config.extrusion.thickness > 0`, opaque single-sided surfaces are
 // solidified into closed shells (see extrude.h). The default config disables
 // both light collection and solidification.
